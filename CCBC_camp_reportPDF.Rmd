@@ -1,0 +1,596 @@
+---
+title: "2024 Cross Country BC Sept Camp"
+author: "Whistler, BC"
+date: "2024-09-17 to 2024-09-21"
+always_allow_html: true
+output: pdf_document
+header-includes:
+  \usepackage{fancyhdr}
+  \usepackage{float}
+---
+\addtolength{\headheight}{0cm}
+\pagestyle{fancyplain}
+\setlength{\headheight}{71.50471pt}
+
+
+\lhead{\includegraphics[height=2cm]{CCBC.jpg}}
+\rhead{\includegraphics[height=2cm]{CSIP.jpg}}
+
+<!-- \lhead{\includegraphics[height=2cm]{/Users/mingchangtsai/CSI Pacific Dropbox/Ming-Chang Tsai/Tsai/CSIP/projects/PSO/Cross Country BC/dashboard/CCBC dashboard/XC ski dashboard/code/CCBC.jpg}} -->
+<!-- \rhead{\includegraphics[height=2cm]{/Users/mingchangtsai/CSI Pacific Dropbox/Ming-Chang Tsai/Tsai/CSIP/projects/PSO/Cross Country BC/dashboard/CCBC dashboard/XC ski dashboard/code/CSI_LOGO_Eng-FR_PACIFIC.jpg}} -->
+\renewcommand{\headrulewidth}{0pt}
+\fancyfoot[L]{Prepared by: CSI Pacific}
+\fancyfoot[R]{`r format(Sys.time(), '%B %d, %Y')`}
+
+```{r setup, include=FALSE}
+library(pacman)
+p_load(tidyverse,knitr,kableExtra,gridExtra,lubridate,readxl,conflicted,ggradar,scales)
+# theme_set(theme_bw())
+conflict_prefer("filter","dplyr")
+conflict_prefer("lag","dplyr")
+options(knitr.kable.NA = '')
+
+# source("report_processing.R")
+# source("Lauren 2024 Module.R")
+# athlete <- c(field$fullname[field$Date>ddate],
+#              physiology$fullname[physiology$Date>ddate]
+#              # nutri$fullname[nutri$Date>ddate],
+#              # mental$fullname[mental$Date>ddate],
+#              # therapy$fullname[therapy$Date>ddate]
+# ) %>% unique() %>% sort()
+
+# m=4
+
+## athlete historic
+field1 <- field %>% 
+  filter(fullname==athlete[m]) %>% 
+  arrange(Date)
+ifelse(nrow(field1)==0, field1_chunk <- FALSE, field1_chunk <- TRUE)
+
+# nutri1 <- nutri %>% 
+#   filter(fullname==athlete[m])
+
+# mental1 <- mental %>% 
+#   filter(fullname==athlete[m])
+# ifelse(nrow(mental1)==0, mental1_chunk <- FALSE, mental1_chunk <- TRUE)
+
+physiology1 <- physiology %>% 
+  filter(fullname==athlete[m],Date>ddate) %>% 
+  slice_head(n=5)
+ifelse(nrow(physiology1)==0,physiology1_chunk <- FALSE,physiology1_chunk <- TRUE)
+
+# tmptherapy <- therapy %>% 
+#   filter(fullname==athlete[m])
+# 
+tech1 <- technique %>%
+  filter(fullname==athlete[m],Date>ddate) %>%
+  group_by(technique) %>%
+  slice_max(Timestamp) %>%
+  ungroup()
+ifelse(nrow(tech1)==0,tech1_chunk <- FALSE,tech1_chunk <- TRUE)
+
+
+#### current athlete test
+field_ath <- field1 %>% filter(Date>ddate)
+
+# nutri_ath <- nutri1 %>% filter(Date>ddate) %>% 
+#   slice_max(Date,n=1,with_ties = F)
+
+physiology_ath <- physiology1 %>% filter(Date>ddate)
+ifelse(nrow(physiology_ath)==0, physiology_chunk <- FALSE, physiology_chunk <- TRUE)
+
+tech_ath <- tech1 %>% filter(Date>ddate)
+ifelse(nrow(tech_ath)==0, tech_chunk <- FALSE, tech_chunk <- TRUE)
+
+# snc_ath <- SnCAG %>% filter(`Full Name`==athlete[m])
+snc <- snc %>% 
+  filter(Date>ddate)
+
+snclist <- list.files("../Lauren/SnC_Reports", full.names = T)
+snc_ath <- grep(athlete[m],snclist)
+ifelse(length(snc_ath)==0,snc_chunk <- FALSE, snc_chunk <- TRUE)
+
+```
+
+# Name: `r athlete[m]`
+# Age (on December 31, 2024): `r max(field1$age[1],physiology1$age[1])`
+
+
+# Discipline Overview
+
+```{r overview, echo=FALSE, results='asis', warning=FALSE, message=FALSE, eval=field1_chunk}
+
+if(nrow(field_ath)>0){
+  best <- field1 %>% 
+    summarise(
+      across(c(dp2k:run3k), min,na.rm=T),    # Minimum in 3 columns
+      across(c(upper,lower), max,na.rm=T)  # Maximum in 5 columns
+    ) %>% 
+    pivot_longer(dp2k:lower, names_to = "var", values_to = "best")
+  
+  
+
+  take_single_or_last <- function(x) {
+    x <- x[!is.na(x)]  # Remove NA values
+    if (length(x) == 0) {
+      return(NA)  # Return NA if there is no data
+    } else if (length(unique(x)) == 1) {
+      return(unique(x))  # Take the single unique value if there's only one
+    } else {
+      return(last(x))  # Otherwise, take the most recent value
+    }
+  }
+  
+  # Group by weeks and summarize data
+  prog <- field1 %>%
+    # Group by the start of the week based on 'Date'
+    group_by(Date = floor_date(Date, unit = "week")) %>%
+    summarise(
+      dp2k = take_single_or_last(dp2k),               # Aggregate numerical columns with mean
+      arm = take_single_or_last(arm),
+      full = take_single_or_last(full),
+      leg = take_single_or_last(leg),
+      run3k = take_single_or_last(run3k),
+      upper = take_single_or_last(upper),
+      lower = take_single_or_last(lower)
+    ) %>%
+    ungroup()
+  
+  year_test <- prog %>% 
+    mutate(month=month(Date)) %>% 
+    filter(month==last(month)) %>% 
+    summarise(across(c(dp2k:lower), ~(.-lag(.))/lag(.))) %>% 
+    pivot_longer(dp2k:lower, names_to = "var", values_to = "diff_year") %>% 
+    filter(!is.na(diff_year))
+  
+  last_test <- prog %>% 
+    summarise(across(c(dp2k:lower), ~(.-lag(.))/lag(.))) %>% 
+    slice_tail(n=1) %>% 
+    pivot_longer(dp2k:lower, names_to = "var", values_to = "diff_last") %>% 
+    filter(!is.na(diff_last))
+  
+  
+  out <- field_ath %>% 
+    # select(Sex,age,dp2k,run3k,matches("lower|upper")) %>% 
+    pivot_longer(dp2k:lower, names_to = "var", values_to = "score") %>% 
+    left_join(best,by="var") %>% 
+    left_join(year_test,by="var") %>% 
+    left_join(last_test,by="var") %>% 
+    filter(!is.na(score)) %>%
+    mutate(score=ifelse(!grepl("lower|upper",var),format(as.POSIXlt(score, origin = "1970-01-01", tz = "UTC"), format = "%M:%S"),percent(score, accuracy=0.1)),
+           best=ifelse(!grepl("lower|upper",var),format(as.POSIXlt(best, origin = "1970-01-01", tz = "UTC"), format = "%M:%S"),percent(best, accuracy=0.1)),
+           area="Field Testing",.before=Sex) %>% 
+    mutate(var=gsub("dp2k","2km Double Pole", var),
+           var=gsub("run3k","3km Running", var),
+           # var=gsub("bcds_upper","BCDS Upper %", var),
+           # var=gsub("bcds_lower","BCDS Lower %", var),
+           var=gsub("upper","Upper Body %", var),
+           var=gsub("lower","Lower Body %", var),
+           var=gsub("arm","Arm-Only", var),
+           var=gsub("leg","Leg-Only", var),
+           var=gsub("full","Normal Skate", var),
+           across(contains("diff"),percent, accuracy=0.01)
+    ) %>% 
+    select(-c(Sex:fullname))
+} else {
+  out <- data.frame(
+    area="Field Testing",
+    var=c("Arm-Only","Normal Skate","Leg-Only","Upper Body %","Lower Body %","2km Double Pole","3km Running"),
+    score=NA
+  )
+}
+
+
+p <- kbl(out[-1], align="lcccc",
+         col.names=c(" ","Result","Best","Compared to last year","Compared to Last Test")) %>%
+  kable_styling(bootstrap_options = c('hover'), font_size = 10, full_width = F, latex_options = "HOLD_position")
+
+
+p
+
+```
+
+
+\pagebreak
+
+## Technique Overview
+
+```{r technique, echo=FALSE, results='asis', warning=FALSE, message=FALSE, eval=tech_chunk}
+# options(knitr.kable.NA = '')
+# tech <- alltech %>%
+#   select(2:9,52:ncol(.))
+
+out1 <- tech_ath %>%
+  select(agegroup:technique,"Body Position":reposition_min) %>% 
+  arrange(discipline) %>% 
+  mutate(`Body Position`=substr(`Body Position`,1,500),
+         Timing=substr(Timing,1,500),
+         powerposition_grade=ifelse(agegroup=="U14",powerposition/10,powerposition/25),
+         powerline_grade=ifelse(agegroup=="U14",powerline/10,ifelse(agegroup=="U16",powerline/15,powerline/25)),
+         skilift_grade=ifelse(agegroup=="U18",skilift/10,NA),
+         pole_grade=ifelse(agegroup=="U14",pole/10,ifelse(agegroup=="U16",pole/20,pole/25)),
+         leg_grade=ifelse(agegroup=="U14",leg/10,leg/20),
+         reposition_grade=ifelse(agegroup=="U18",reposition/10,NA))
+
+
+grade <- out1 %>% 
+  select(technique,contains("grade")) %>% 
+  mutate(across(where(is.numeric), ~ percent(.)))  
+
+p <- kable(grade, escape=FALSE, align="lcccccc",
+           col.names=c("Sub Technique","Power Position","Power Line","Ski Lift","Pole Plant","Leg Kick/Push","Reposition Phase")) %>%
+  kable_styling(font_size = 10, full_width = F, latex_options = "HOLD_position") %>%
+  add_header_above(c(" "=1,"Body Position"=3,"Timing"=3)) 
+
+com <- out1 %>% 
+  select(technique:Timing) %>% 
+  pivot_longer(names_to = "Focus",
+               values_to = "Comment", 2:3)
+p2 <- kable(com[-1], escape=FALSE, align="l") %>%
+  kable_styling(font_size = 10, full_width = F, latex_options = "HOLD_position") %>%
+  add_header_above(c("Technique Category Focus"=2)) 
+
+tmptech <- unique(out1$technique)
+
+for(i in tmptech){
+  q <- which(com$technique==i)
+  # p <- p %>% pack_rows(i,q[1],last(q))
+  p2 <- p2 %>% pack_rows(i,q[1],last(q))
+}
+
+
+## background colour
+twidth="4em"
+p <- p %>%
+  column_spec(2,width=twidth,background=ifelse(out1$powerposition_grade>=0.8, "white", ifelse(out1$powerposition_grade<0.6,"red","yellow"))) %>%
+  column_spec(3,width=twidth,background=ifelse(out1$powerline_grade>=0.8, "white", ifelse(out1$powerline_grade<0.6,"red","yellow"))) %>%
+  column_spec(4,width=twidth,background=ifelse(is.na(out1$skilift),"black",ifelse(out1$skilift_grade>=0.8, "white", ifelse(out1$skilift_grade<0.6,"red","yellow")))) %>%
+  column_spec(5,width=twidth,background=ifelse(out1$pole_grade>=0.8, "green", ifelse(out1$pole_grade<0.6,"red","yellow"))) %>%
+  column_spec(6,width=twidth,background=ifelse(is.na(out1$leg_grade),"black",ifelse(out1$leg_grade >= 0.8, "white", ifelse(out1$leg_grade <0.6,"red","yellow")))) %>%
+  column_spec(7,width=twidth,background=ifelse(is.na(out1$reposition_grade),"black",ifelse(out1$reposition_grade >= 0.8, "white", ifelse(out1$reposition_grade <0.6,"red","yellow")))) %>% 
+
+## text colour if min is less than XXX
+  column_spec(2,width=twidth,color=ifelse(out1$powerposition_min <=2,"blue","black"), bold = ifelse(out1$powerposition_min<=2,T,F)) %>%
+  column_spec(3,width=twidth,color=ifelse(out1$powerline_min <=2,"blue","black"), bold = ifelse(out1$powerline_min<=2,T,F)) %>%
+  column_spec(4,width=twidth,color=ifelse(is.na(out1$skilift),"black",ifelse(out1$skilift_min <=2,"blue","black")), bold = ifelse(is.na(out1$skilift),F,ifelse(out1$skilift_min<=2,T,F))) %>%
+  column_spec(5,width=twidth,color=ifelse(out1$pole_min <=2,"red","black"), bold = ifelse(out1$pole_min<=2,T,F)) %>%
+  column_spec(6,width=twidth,color=ifelse(is.na(out1$leg),"black",ifelse(out1$leg_min <=2,"blue","black")), bold = ifelse(out1$leg_min<=2,T,F)) %>%
+  column_spec(7,width=twidth,color=ifelse(is.na(out1$reposition_min), "black", ifelse(out1$reposition_min <=2,"blue","black")), bold = ifelse(is.na(out1$reposition),F,ifelse(out1$reposition_min<=2,T,F)))
+
+
+p2 <- p2 %>%
+  column_spec(2,width="40em")
+
+
+p
+p2
+
+```
+
+
+- BLACK background means the sub focus does not apply
+- WHITE background means score is 80% or above
+- YELLOW background means score is between 60-80%
+- RED background means score is below 60%
+- BOLD and BLUE number means at least one of the checklist in the focus is below 40%
+
+\pagebreak
+
+
+\begin{center}
+\textbf{\Huge{DETAIL}}
+
+\vspace{5cm}
+
+\textbf{\Huge{DISCIPLINE}}
+
+\vspace{5cm}
+
+\textbf{\Huge{REPORTS}}
+
+\end{center}
+
+
+\pagebreak
+
+## Physiology
+
+```{r step, echo=FALSE, results='asis', warning=FALSE, message=FALSE, fig.height=4, eval=physiology1_chunk}
+out <- physiology1 %>%
+  select(Date,WR1:BLa10) %>%
+  pivot_longer(WR1:WR10,
+               names_to = c("var","stage"),
+               names_pattern = "([A-Za-z]+)(\\d+)",
+               values_to = "spd") %>%
+  pivot_longer(BLa1:BLa10,
+               names_to = c("var2","stage2"),
+               names_pattern = "([A-Za-z]+)(\\d+)",
+               values_to = "bla") %>%
+  filter(stage==stage2) %>%
+  pivot_longer(HR1:HR10,
+               names_to = c("var3","stage3"),
+               names_pattern = "([A-Za-z]+)(\\d+)",
+               values_to = "hr") %>%
+  filter(stage==stage3) %>%
+  select(-var,-var2,-var3,-stage2,-stage3) %>%
+  filter(complete.cases(.))
+
+
+# mod <- lm(bla~poly(spd,3),out)
+# pred <- data.frame(spd=seq(round(min(out$spd))-1,round(max(out$spd))+1,by=0.01)) %>%
+#   mutate(lactate=round(predict(mod,data.frame(spd=spd)),2))
+
+# hr_mod <- lm(hr~poly(spd,3),out)
+# pred <- pred %>%
+#   mutate(hr=round(predict(hr_mod,data.frame(spd=spd)),2))
+
+colors <- c("HR" = "black", "Lactate" = "blue")
+
+normalizer <- max(out$hr)/max(out$bla)
+ggplot(out, aes(x=spd, y=bla, color=as.factor(Date))) +
+  theme_bw() +
+  geom_point(aes(y=bla)) +
+  geom_line(aes(y=bla)) +
+  # geom_line(aes(y=bla, color="Lactate")) +
+  # geom_line(aes(y=hr/normalizer, color="HR")) +
+  geom_point(aes(y=hr/normalizer)) +
+  geom_line(aes(y=hr/normalizer), linetype="dashed") +
+  scale_y_continuous(sec.axis=sec_axis(~.*normalizer, name="Heart Rate (bpm)",
+                                       breaks = seq(100,220,40))) +
+  scale_x_continuous(breaks = seq(floor(min(out$spd)), ceiling(max(out$spd)), by = 1)) +
+  theme(legend.title=element_blank(),
+        legend.position=c(1,0),
+        legend.justification = c(1,0)) +
+  labs(x="Speed (km/h)", y = "Lactate (mmol/L)", color="Legend")
+
+
+```
+
+
+<!-- ```{r step2, echo=FALSE, results='asis', warning=FALSE, message=FALSE} -->
+<!-- # options(knitr.kable.NA = '') -->
+<!-- if(nrow(physiology_ath)==0){ -->
+<!--   out1 <- data.frame(Lactate=c(2,4,6), -->
+<!--                      spd=NA, -->
+<!--                      hr=NA) -->
+<!-- } else { -->
+<!--   # out1 <- pred %>% filter(lactate<=2) %>% top_n(1,wt=lactate) %>% -->
+<!--   #   bind_rows(.,pred %>% filter(lactate<=4) %>% top_n(1,wt=lactate)) %>% -->
+<!--   #   bind_rows(.,pred %>% filter(lactate<=6) %>% top_n(1,wt=lactate)) %>% -->
+<!--   # out1 <- pred %>% filter(lactate<=2) %>% slice_max(lactate,n=1, with_ties = F) %>% -->
+<!--   #   bind_rows(.,pred %>% filter(lactate<=4) %>% slice_max(lactate,n=1,with_ties = F)) %>% -->
+<!--   #   bind_rows(.,pred %>% filter(lactate<=6) %>% slice_max(lactate,n=1,with_ties = F)) %>% -->
+<!--   #   mutate(lactate=round(lactate), -->
+<!--   #          spd=round(spd,1)) %>% -->
+<!--   #   select(lactate, spd, hr) -->
+<!--   out1 <- physiology_ath %>%  -->
+<!--     select(LT2WR,LT2HR,LT2Bla,) -->
+
+<!-- } -->
+
+
+<!-- kable(out1, escape=FALSE, align="c", -->
+<!--       col.names=c("Lactate (mmol/L)", "Speed (km/h)", "Heart Rate (bpm)")) %>% -->
+<!--   kable_styling(bootstrap_options = c('hover'), font_size = 14, full_width = FALSE, latex_options = "HOLD_position") -->
+
+<!-- ``` -->
+
+### Approximate Training Zones
+
+The training zones below are estimates based on lactates produced during your last step-test. These estimates are more likely accurate and compared to the surface and weather the lactate step test was conducted (for example, if your step test was on a track in great weather, the training zones will only be relevant to similar tracks in similar weather, as the training zones will be a lot different than if your step test was done on rollers (for example)). Remember, that fatigue, weather, hydration status, carbohydrate intake (muscle glycogen) aging and altitude can all impact on the HR and lactate zone estimations. They are estimates only, and should only guide training - always refer to feedback from your coach.
+
+```{r step3, echo=FALSE, results='asis', warning=FALSE, message=FALSE, eval=physiology_chunk}
+out <- data.frame(matrix(NA,nrow=6,ncol=6))
+out[,1] <- c("1a","1b",2:5)
+out[,6] <- c("Sub-aerobic (Easy, LSD, Recovery)", "Aerobic Threshold (LT1)", "Transition (Moderate Intensity)", "Anaerobic Threshold (LT2)", "Critical Speed (Race Pace)", "Maximum Aerobic Speed")
+
+if(nrow(physiology_ath)>0){
+  out[,2] <- physiology_ath %>% select(Z1aHR, Z1bHR, Z2HR, Z3HR, Z4HR, Z5HR) %>%
+    mutate(Z1aHR=ifelse(is.na(Z1aHR),NA,paste("<=",Z1aHR)),
+           Z5HR=ifelse(is.na(Z5HR),NA,paste(">",Z5HR))) %>%
+    pivot_longer(1:6) %>% pull(value)
+  
+  out[,3] <- physiology_ath %>% select(matches("^Z.*LowWR")) %>%
+    mutate(Z1a=ifelse(is.na(Z1aLowWR),NA,paste("<=",Z1aLowWR)),
+           Z1b=ifelse(is.na(Z1bLowWR) | is.na(Z2LowWR),NA,paste(Z1bLowWR,Z2LowWR,sep = " - ")),
+           Z2=ifelse(is.na(Z2LowWR) | is.na(Z3LowWR),NA,paste(Z2LowWR,Z3LowWR,sep = " - ")),
+           Z3=ifelse(is.na(Z3LowWR) | is.na(Z4LowWR),NA,paste(Z3LowWR,Z4LowWR,sep = " - ")),
+           Z4=ifelse(is.na(Z4LowWR) | is.na(Z5LowWR),NA,paste(Z4LowWR,Z5LowWR,sep = " - ")),
+           Z5=ifelse(is.na(Z5LowWR),NA,paste(">",Z5LowWR))) %>%
+    select(-matches("WR")) %>% unlist()
+  
+  out[,4] <- physiology_ath %>% select(matches("Fast3k")) %>%
+    # select(-1) %>%
+    pivot_longer(1:ncol(.)) %>%
+    mutate(value=format(value, format = "%H:%M")) %>%
+    pivot_wider(names_from = "name",
+                values_from = "value") %>%
+    # mutate(z1=ifelse(is.na(Z1aFast3k),NA,">="),.before=Z1aFast3k) %>%
+    mutate(z5=ifelse(is.na(Z4Fast3k),NA,"<")) %>% unlist()
+  
+  out[,5] <- physiology_ath %>% select(matches("Slow3k")) %>%
+    pivot_longer(1:6) %>%
+    mutate(value=format(value, format = "%H:%M")) %>%
+    pull(value)
+  
+}
+
+
+p <- kbl(out, escape=FALSE, align="c",
+         col.names=c("Zone", "bpm", "kph", "Fast Pace","Slow Pace","Description"),
+) %>%
+  kable_styling(font_size = 12, full_width = FALSE, latex_options = "HOLD_position")
+
+my_background <- colorRampPalette(c("yellow", "red"))(12)
+for(i in 1:nrow(out)){
+  p <- p %>% row_spec(i,color="black",background=my_background[2*i])
+}
+p
+
+
+```
+
+\pagebreak
+
+# Double Pole
+
+```{r dp, echo=FALSE, results='asis', warning=FALSE, message=FALSE, fig.height=3, eval=field1_chunk}
+out <- field1 %>%
+  select(Sex,age,Date,dp2k) %>%
+  filter(!is.na(dp2k)) %>%
+  group_by(age) %>%
+  filter(dp2k==min(dp2k)) %>%
+  rename(athlete=dp2k) %>%
+  full_join(field_std %>% 
+              filter(!is.na(level),Sex==field1$Sex[1],test=="dp2k") %>% 
+              select(-test,-time) %>% 
+              pivot_wider(
+                names_from = "level",
+                values_from = "time_s"
+              ), by=c("Sex","age")) %>% 
+  select(-Date,-Sex) %>% 
+  pivot_longer(athlete:Bronze) %>%
+  filter(!is.na(value)) %>% 
+  mutate(value=as.POSIXct(value, origin = "1970-01-01", tz = "UTC"))
+
+# 
+# bind_rows(field_std %>% 
+#             filter(!is.na(level),Sex==field$Sex[1]) %>% 
+#             select(-time,-test) %>% 
+#             pivot_wider(names_from = level, values_from = time_s))
+#   
+#   
+#   
+#   field_std %>%
+#             filter(test=="dp2k",Sex==field1$Sex[1]) %>%
+#             select(-test,-time,-level) %>%
+#             mutate(name="standard")) 
+
+
+
+# left_join(field %>%
+#             # filter(fullname!=athlete[m]) %>%
+#             group_by(age,fullname) %>%
+#             slice_min(dp2k, with_ties = F) %>%
+#             group_by(age,Sex) %>%
+#             summarise(ave=mean(dp2k,na.rm=TRUE)), by=c("Sex","age")) %>%
+# left_join(field %>%
+#             # filter(fullname!=athlete[m]) %>%
+#             group_by(age,fullname) %>%
+#             slice_min(dp2k, with_ties = F) %>%
+#             group_by(age,Sex) %>%
+#             slice_min(dp2k,n=3,with_ties=F) %>%
+#             summarise(top3=mean(dp2k,na.rm=TRUE)), by=c("Sex","age")) %>%
+# select(-Date,-Sex) %>%
+# pivot_longer(athlete:top3) %>%
+# mutate(value=as.POSIXct(value, origin = "1970-01-01", tz = "UTC"))
+
+
+if(nrow(out)>0){
+  ggplot(out, aes(x=age, y=value, color=name)) +
+    geom_point() +
+    geom_line() +
+    theme_bw() +
+    theme(legend.position = "bottom",
+          legend.title = element_blank()) +
+    scale_x_continuous(breaks = seq(min(out$age),max(out$age))) +
+    scale_y_datetime(date_labels = "%M:%S", date_breaks = "15 sec") +
+    labs(x="Age (yrs)", y = "Time (MM:SS)")
+} else {
+  cat("No double pole data!")
+}
+
+```
+
+# 3km Running
+
+```{r running, echo=FALSE, results='asis', warning=FALSE, message=FALSE, fig.height=3, eval=field1_chunk}
+out <- field1 %>%
+  select(Sex,age,Date,run3k) %>%
+  filter(!is.na(run3k)) %>%
+  group_by(age) %>%
+  filter(run3k==min(run3k)) %>%
+  rename(time_s=run3k) %>% 
+  mutate(name="athlete") %>% 
+  select(-Date) %>% 
+  bind_rows(field_std %>% 
+              filter(test=="run3k",Sex==field1$Sex[1]) %>% 
+              select(-test,-time,-level) %>% 
+              mutate(name="standard")) %>% 
+  mutate(value=as.POSIXct(time_s, origin = "1970-01-01", tz = "UTC"))
+
+
+
+
+if(nrow(out)>0){
+  ggplot(out, aes(x=age, y=value, color=name)) +
+    geom_point() +
+    geom_line() +
+    theme_bw() +
+    theme(legend.position = "bottom",
+          legend.title = element_blank()) +
+    scale_x_continuous(breaks = seq(min(out$age),max(out$age))) +
+    scale_y_datetime(date_labels = "%M:%S", date_breaks = "15 sec") +
+    labs(x="Age (yrs)", y = "Time (MM:SS)")
+} else {
+  cat("No running data!")
+}
+
+
+```
+
+\pagebreak
+
+```{r technique2, echo=FALSE, results='asis', warning=FALSE, message=FALSE, eval=tech_chunk}
+# options(knitr.kable.NA = '')
+cat("\n# Individual Technique Checklist\n\n")
+
+for(mm in 1:nrow(tech_ath)){
+  out1 <- tech_ath[mm,] %>%
+    pivot_longer(cols = c(-c(Date:technique,"Body Position":ncol(.)))) %>%
+    # pivot_longer(cols = 9:66) %>% 
+    janitor::remove_empty("cols") %>%
+    filter(!is.na(value)) %>%
+    separate(name,c("area","description"), sep = " \\[") %>%
+    mutate(description = str_replace(description, "\\].*$", ""))
+
+  p <- out1 %>%
+    select(description,value) %>%
+    kbl(., escape = FALSE, align = 'lc',
+        col.names = c(" ","Score (out of 5)"),
+        caption = paste(unique(out1$discipline),unique(out1$technique),sep = " - ")) %>%
+    kable_styling(font_size = 10, full_width = F, latex_options = "HOLD_position") %>%
+    column_spec(1,width = "40em")
+  # add_header_above(c(" "=1,"Technique Category Focus"=2))
+
+  a <- unique(out1$area)
+
+  for(kk in a){
+    p <- p %>%  pack_rows(kk,which(out1$area==kk)[1],last(which(out1$area==kk)))
+  }
+  print(p)
+
+  # cat("\\pagebreak")
+}
+
+```
+
+\pagebreak
+
+# Strength and Conditioning
+
+```{r snc1, echo=FALSE, results='asis', warning=FALSE, message=FALSE, eval=snc_chunk}
+# AgeGroupComparisonFigure(athlete[m])
+# LongTermComparisonFigure(athlete[m])
+
+# cat("\n# Strength and Conditioning\n\n")
+
+include_graphics(snclist[snc_ath[1]])
+include_graphics(snclist[snc_ath[2]])
+# include_graphics("Aleah_Smith_comparison.pdf")
+# include_graphics("Aleah_Smith_LongTerm.pdf")
+
+
+```
+
+`r if(snc_chunk==T) snc$Notes[snc$fullname==athlete[m]]`

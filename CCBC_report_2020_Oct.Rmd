@@ -1,0 +1,644 @@
+---
+title: <center>Cross Country BC</center>
+subtitle: <center>Performance Test Report</center>
+author: "Prepared By: Ming-Chang Tsai"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output: html_document
+params:
+  athlete: "test"
+  pole3mt: NA
+  boot3mt: NA
+---
+
+
+<img src='csip.png' style='position:absolute;top:0px;right:0px;' height='120' width='200' >
+<img src='ccbc.jpg' style='position:absolute;top:0px;left:0px;' height='120' width='120' >
+
+<br>
+<br>
+
+
+```{r setup, include=FALSE}
+library(tidyverse) 
+library(knitr)
+library(kableExtra)
+library(gridExtra)
+library(leaflet)
+library(trackeR)
+library(signal)
+library(zoo)
+library(data.table)
+library(grid)
+library(lubridate)
+library(readxl)
+#library(ggradar)
+library(scales)
+
+library(conflicted)
+conflict_prefer("filter","dplyr")
+conflict_prefer("between","dplyr")
+conflict_prefer("group_rows", "kableExtra")
+conflict_prefer("last", "dplyr")
+
+options(digits=3)
+
+pole3mt <- params$pole3mt %>% 
+  mutate(impact=abs(impact))
+boot3mt <- params$boot3mt %>% 
+  mutate(airtime=glide.start-boot.up,
+         ratio=airtime/glide.time) %>% 
+  rename(time=boot.up)
+
+#athlete <- unique(c(pole3mt$name,boot3mt$name))
+#u <- athlete[6]
+#v <- tolower(strsplit(u," ")[[1]][1])
+u <- params$athlete
+v <- tolower(params$athlete)
+#rmarkdown::render("../report_template/CCBC_report_2020_Oct.Rmd", output_file = paste0("../report/CCBC_report_2020_Oct_",u,".html"))
+
+#rmarkdown::render("./report_template/CCBC_report_2020_Oct.Rmd", output_file = "../report/CCBC_report_2020_Oct_Hugo.html")
+
+bf <- butter(3,0.1)
+
+gps_info <- read_xlsx('../3MT/sensor_3mt.xlsx',sheet="gps") %>% 
+  filter(name==v)
+
+if(nrow(gps_info)>0){
+  if(gps_info$type[1]=="fit"){
+    #October camp had no valid FIT files due to smart recording
+    # fullgps <- read_fit(paste0('../3MT/gps/',gps_info$file[1]), format=FALSE) %>%
+    #   select(1:8) %>% 
+    #   # select(timer.s,lat,lon,distance.km,speed.kmh,elevation.m,cadence.rpm,hr.bpm) %>% 
+    #   rename(time=1,lat=2,lon=3,dist=4,alt=5,speed=6,hr=7,cad=8) %>% 
+    #   mutate(time=c(0,cumsum(diff(time))),
+    #          index=row_number())
+    gps_dp <- NA
+    gps_fs <- NA
+    gps_normal <-NA
+  } else {
+    if("dp3mt"%in%gps_info$test){
+      gps_dp <- readTCX(paste0('../3MT/gps/',gps_info$file[which(gps_info$test=="dp3mt")])) %>% 
+        select(-cadence_running,-cadence_cycling,-power,-temperature,-speed) %>%
+        rename(lat=2,lon=3,alt=4,dist=5,hr=6) %>%
+        mutate(speed=c(0,diff(dist)),
+               index=row_number()) %>% 
+        filter(between(index,gps_info$start[which(gps_info$test=="dp3mt")],gps_info$end[which(gps_info$test=="dp3mt")])) %>% 
+        mutate(time=row_number())
+    } else{
+      gps_dp <- NA
+    }
+    
+    if ("fs3mt"%in%gps_info$test){
+      gps_fs <- readTCX(paste0('../3MT/gps/',gps_info$file[which(gps_info$test=="fs3mt")])) %>% 
+        select(-cadence_running,-cadence_cycling,-power,-temperature,-speed) %>%
+        rename(lat=2,lon=3,alt=4,dist=5,hr=6) %>%
+        mutate(speed=c(0,diff(dist)),
+               index=row_number()) %>% 
+        filter(between(index,gps_info$start[which(gps_info$test=="fs3mt")],gps_info$end[which(gps_info$test=="fs3mt")])) %>% 
+        mutate(time=row_number())
+    } else{
+      gps_fs <- NA
+    }
+    if("normal3mt"%in%gps_info$test){
+      gps_normal <- readTCX(paste0('../3MT/gps/',gps_info$file[which(gps_info$test=="normal3mt")])) %>% 
+        select(-cadence_running,-cadence_cycling,-power,-temperature,-speed) %>%
+        rename(lat=2,lon=3,alt=4,dist=5,hr=6) %>%
+        mutate(speed=c(0,diff(dist)),
+               index=row_number()) %>% 
+        filter(between(index,gps_info$start[which(gps_info$test=="normal3mt")],gps_info$end[which(gps_info$test=="normal3mt")])) %>% 
+        mutate(time=row_number())
+    } else{
+      gps_normal<NA
+    }
+  }
+}
+
+
+```
+
+##  {.tabset .tabset-pills .tabset-fade}
+
+<p style="font-weight:500; font-size:32px; color: #0051A5"> Name: `r u` </p>
+<br>
+<br>
+
+### 3-Min All-Out Test
+
+<p style="font-weight:500; font-size:16px"> Test Date: October 17, 2020 </p>
+<p style="font-weight:500; font-size:16px"> Test Location: Callahan Road, Whistler, BC </p>
+
+<br><br>
+
+
+<p style="font-weight:500; font-size:24px"> Free Skate </p>
+
+```{r Free Skate,echo=FALSE, results='asis', warning=FALSE, message=FALSE}
+out <- boot3mt %>% 
+  filter(name==u, test=="skate")%>% 
+  filter(time<=185) %>% 
+  group_by(side) %>% 
+  mutate(cad=frollmean(cadence,5)) %>% 
+  mutate(airtime2=frollmean(airtime,5),
+         groundtime=frollmean(glide.time,5))
+
+colors <- c("Speed" = "black", "Cadence" = "blue")
+
+if(nrow(out)>0){
+  if(!is.na(gps_fs)){
+    
+    setDT(out)
+    setDT(gps_fs)
+    
+    out[,mtime := time]
+    gps_fs[,mtime := time]
+    setkey(out,mtime)
+    setkey(gps_fs,mtime)
+    
+    outmatched <- out[gps_fs, roll="nearest"]
+    out1 <- outmatched %>%
+      mutate(speed=ifelse(time<1,0,na.approx(speed)),
+             speed=frollmean(speed,5)) %>%
+      mutate(alt=alt-alt[1])
+    # 
+    # plot(out1$alt)
+    
+    # out1 <- full_join(out[c('time')], gps_fs[c('time','speed','alt')], by="time") %>%
+    #   arrange(time) %>%
+    #   mutate(alt=ifelse(time<1,gps_fs$alt[1],na.approx(alt)),
+    #          speed=ifelse(time<1,0,na.approx(speed)),
+    #          speed=frollmean(speed,5)) %>%
+    #   mutate(alt=alt-alt[1]) %>%
+    #   right_join(.,out,by="time")
+    #plot(out1$alt/norm_alt)
+    
+    normalizer <- max(out1$cad,na.rm=T)/max(out1$speed,na.rm=T)
+    norm_alt <-  max(out1$alt,na.rm=T)/max(out1$speed,na.rm=T)
+    
+    p1 <- ggplot(out1, aes(x=time,y=alt/norm_alt, group=side)) +
+      geom_area(fill="grey", alpha=0.4, position="identity") +
+      scale_y_continuous(sec.axis=sec_axis(~.*normalizer, name="Cadence (spm)")) +
+      theme_bw() +
+      geom_line(aes(y=speed, color="Speed")) +
+      geom_line(aes(y=cad/normalizer, color="Cadence")) +
+      theme(legend.title=element_blank(),
+            legend.position=c(0,0),
+            legend.justification = c(0,0)) +
+      labs(x="Time (s)", y = "Speed (m/s)", title = "Speed & Cadence", color="Legend")
+  } else{
+    p1 <- ggplot(out, aes(x=time)) +
+      theme_bw() +
+      geom_line(aes(y=cad, color="Cadence")) + 
+      theme(legend.title=element_blank(),
+            legend.position=c(0,0),
+            legend.justification = c(0,0)) +
+      labs(x="Time (s)", y = "Cadence (rpm)", title = "Cadence", color="Legend")
+  }
+  p1
+} else {
+  cat("Missing Boot Data")
+}
+
+```
+
+
+Boot Air Time is defined as when the boot is off the ground and Boot Ground Time is when the boot is on the ground. Boot Air to Ground ratio is air time over ground time, so 1 means you spent equal time in the air and ground during the stroke while value greater than 1 means you spent more time off the ground and value less than 1 means you spent more time on the ground.
+
+```{r Boot Air time,echo=FALSE, results='asis', warning=FALSE, message=FALSE, fig.height=8}
+if(nrow(out)>0){
+  if(!is.na(gps_fs)){  
+    # out2 <- full_join(out[c('time')], gps_fs[c('time','alt')], by="time") %>%
+    #   arrange(time) %>%
+    #   mutate(alt=ifelse(time<1,gps_fs$alt[1],na.approx(alt))) %>% 
+    #   mutate(alt=alt-alt[1]) %>% 
+    #   right_join(.,out, by="time")
+    
+    out2 <- outmatched %>%
+      mutate(alt=alt-alt[1])
+    
+    colors <- c("Air" = "black", "Ground" = "blue")
+    
+    normalizer <- max(out2$alt,na.rm=T)/max(out2$groundtime,na.rm=T)
+    
+    p1 <- ggplot(out2, aes(x=time, y=(alt)/normalizer)) +
+      geom_area(fill="grey", alpha=0.4, position="identity") +
+      scale_y_continuous(sec.axis=sec_axis(~.*normalizer, name="Elevation Gain(m)")) +
+      geom_line(aes(y=airtime2, color="Air")) +
+      geom_line(aes(y=groundtime, color="Ground")) + 
+      theme_bw() +
+      theme(legend.title=element_blank(),
+            legend.position=c(0,0),
+            legend.justification = c(0,0)) +
+      labs(x="Time (s)", y = "Boot Air Time (s)", title = "Boot Time (Air & Ground) ", color="Legend") +
+      scale_color_manual(values = colors)
+    
+    p2 <- ggplot(out2, aes(x=time, y=(alt)/normalizer)) +
+      geom_area(fill="grey", alpha=0.4, position="identity") +
+      scale_y_continuous(sec.axis=sec_axis(~.*normalizer, name="Elevation Gain(m)")) +
+      geom_line(aes(y=ratio)) +
+      theme_bw() +
+      theme(legend.title=element_blank(),
+            legend.position = "none") +
+      labs(x="Time (s)", y = "", title = "Boot Air/Ground Ratio", color="Legend") +
+      scale_color_manual(values = colors) +
+      geom_hline(yintercept = 1, linetype="dashed")
+    
+  } else {
+    colors <- c("Air" = "black", "Ground" = "blue")
+    p1 <- ggplot(out, aes(x=time)) +
+      geom_line(aes(y=airtime2, color="Air", linetype=side)) +
+      geom_line(aes(y=groundtime, color="Ground", linetype=side)) + 
+      theme_bw() +
+      theme(legend.title=element_blank(),
+            legend.position=c(0,0),
+            legend.justification = c(0,0)) +
+      labs(x="Time (s)", y = "Boot Air Time (s)", title = "Boot Time (Air & Ground) ", color="Legend") +
+      scale_color_manual(values = colors)
+    
+    
+    p2 <- ggplot(out, aes(x=time)) +
+      geom_line(aes(y=ratio, linetype=side)) +
+      theme_bw() +
+      theme(legend.title=element_blank(),
+            legend.position = "bottom") +
+      labs(x="Time (s)", y = "", title = "Boot Air/Ground Ratio", color="Legend") +
+      scale_color_manual(values = colors) +
+      geom_hline(yintercept = 1, linetype="dashed")
+    
+    
+  } 
+  grid.arrange(p1,p2,ncol=1)
+}else {
+  cat("Missing Boot Data")
+}
+
+```
+
+Asymmetry is defined as the difference between the LEFT vs the RIGHT boot time (air or ground) over average of the boot times.  In both figures, negative number means RIGHT boot time is higher than LEFT boot time (left boot time - right boot time).
+
+```{r Boot Asymmetry,echo=FALSE, results='asis', warning=FALSE, message=FALSE, fig.width=8}
+
+
+if(length(unique(out$side))==2) {
+  out_L <- out %>%
+    filter(side==unique(out$side)[1])
+  
+  out_R <- out %>%
+    filter(side==unique(out$side)[2]) 
+  
+  setDT(out_L)
+  setDT(out_R)
+  
+  setkey(out_L,time)
+  setkey(out_R,time)
+  
+  outmatched <- out_L[out_R, roll="nearest"]
+  outmatched$asym <- (outmatched$airtime-outmatched$i.airtime)/rowMeans(outmatched[,c("airtime",'i.airtime')])
+  outmatched$asym2 <- (outmatched$glide.time-outmatched$i.glide.time)/rowMeans(outmatched[,c("glide.time","i.glide.time")])
+  
+  
+  p1 <- ggplot(outmatched,aes(x=time,y=asym,col=test)) +
+    geom_line() +
+    ylim(-1,1) +
+    geom_hline(yintercept = 0, linetype="dashed") +
+    scale_x_reverse() +
+    coord_flip() +
+    labs(x="Test Duration (s)", y="Asymmetry") + 
+    # facet_grid(~test) +
+    theme_bw() +
+    theme(legend.position="none") +
+    ggtitle("Boot Air Time")
+  
+  p2 <- ggplot(outmatched,aes(x=time,y=asym2,col=test)) +
+    geom_line() +
+    ylim(-1,1) +
+    geom_hline(yintercept = 0, linetype="dashed") +
+    scale_x_reverse() +
+    coord_flip() +
+    labs(x="Test Duration (s)", y="Asymmetry") + 
+    # facet_grid(~test) +
+    theme_bw() +
+    theme(legend.position="none") +
+    ggtitle("Boot Ground Time")
+  
+  grid.arrange(p1,p2,ncol=2)
+} else {
+  cat('\n', '<font size="3"><b>', "Missing/Bad", setdiff(c("L","R"),unique(out$side)),"Boot Data", '</b></font>','\n')
+  #cat("Missing", setdiff(c("L","R"),unique(out$side)),"Boot Data")
+}
+
+```
+
+<br><br><br>
+
+
+<p style="font-weight:500; font-size:24px"> Pole Only </p>
+
+```{r Double Pole, echo=FALSE, results='asis', warning=FALSE, message=FALSE}
+out_dp <- pole3mt %>% 
+  filter(test=="pole", name==u) %>% 
+  filter(time<=185) %>% 
+  group_by(side) %>% 
+  mutate(impact2=filtfilt(bf,abs(impact)),
+         cad=frollmean(cadence,5),
+         gt=frollmean(groundtime,5))
+
+if(nrow(out_dp)>0){
+  if(!is.na(gps_dp)){
+    
+    setDT(out_dp)
+    setDT(gps_dp)
+    
+    setkey(out_dp,time)
+    setkey(gps_dp,time)
+    
+    outmatched_dp <- out_dp[gps_dp, roll="nearest"]
+    
+    out3 <- outmatched_dp %>%
+      mutate(speed=ifelse(time<1,0,na.approx(speed)),
+             speed=frollmean(speed,5)) %>%
+      mutate(alt=alt-alt[1])
+    
+    #  gps_dp[c('speed','alt')]
+    # out3 <- full_join(out_dp[c('time')], gps_dp[c('time','speed','alt')], by="time") %>%
+    # arrange(time) %>%
+    # mutate(alt=ifelse(time<1,gps_fs$alt[1],na.approx(alt)),
+    #        speed=ifelse(time<1,0,na.approx(speed)),
+    #        speed=frollmean(speed,5)) %>%
+    #   mutate(alt=alt-alt[1]) %>%
+    # right_join(.,out_dp,by="time")
+    
+    colors <- c("Cadence" = "black", "Impact" = "blue")
+    
+    norm_impact <-  max(out3$impact,na.rm=T)/max(out3$cad,na.rm=T)
+    norm_alt <-  max(out3$alt,na.rm=T)*norm_impact
+    p1 <- ggplot(out3, aes(x=time,y=(alt)*norm_alt)) +
+      geom_area(fill="grey", alpha=0.4, position="identity")
+  } else {
+    p1 <- ggplot(out_dp, aes(x=time))
+    
+  }
+  
+  norm_impact <-  max(out_dp$impact,na.rm=T)/max(out_dp$cad,na.rm=T)
+  
+  p1 <- p1 +
+    geom_line(aes(y=cad, position="identity", group=side, color=side)) +
+    geom_line(aes(y=impact2/norm_impact, group=side, color=side)) +
+    scale_y_continuous(sec.axis=sec_axis(~.*norm_impact, name="Impact (g)")) +
+    theme_bw() +
+    theme(legend.title=element_blank(),
+          legend.position=c(1,1),
+          legend.justification = c(1,1)) +
+    labs(x="Time (s)", y = "Cadence (ppm)", title = "Cadence & Impact", color="Legend")
+  p1
+  
+} else {
+  cat("Missing/Bad Pole Data")
+}
+
+```
+
+
+There are 2 types of asymmetry shown below.  First figure shows the time difference between the LEFT and RIGHT pole planting time, negative means right pole was planted after the left pole.  Second figure shows the impact asymmetry between the poles, negative means right pole had a higher impact than left pole. 
+
+```{r Pole Asymmetry,echo=FALSE, results='asis', warning=FALSE, message=FALSE, fig.height=8}
+out_dp <- pole3mt %>% 
+  filter(name==u) %>% 
+  filter(time<=185)
+
+if(length(unique(out_dp$side))>1){
+  out1 <- out_dp %>%
+    filter(side==unique(out_dp$side)[1]) %>% 
+    mutate(impact2=filtfilt(bf,abs(impact)),
+           # cad=c(rollmean(cadence,5),rep(mean(cadence[(nrow(out1)-3):nrow(out1)]),4)))
+           cad=frollmean(cadence,5))
+  
+  out2 <- out_dp %>%
+    filter(side==unique(out_dp$side)[2]) %>% 
+    mutate(impact2=filtfilt(bf,abs(impact)),
+           # cad=c(rollmean(cadence,5),rep(mean(cadence[(nrow(out1)-3):nrow(out1)]),4)))
+           cad=frollmean(cadence,5))
+  
+
+  setDT(out1)
+  setDT(out2)
+  
+  out1[,mtime := time]
+  out2[,mtime := time]
+  setkey(out1,mtime)
+  setkey(out2,mtime)
+  
+  outmatched <- out1[out2, roll="nearest"] %>% 
+    # mutate(asym=(epoch.end-i.epoch.end)/1000)
+    mutate(asym=time-i.time)
+  outmatched$asym2 <- (outmatched$impact-outmatched$i.impact)/rowMeans(outmatched[,c("impact","i.impact")])
+  
+  
+  p2 <- ggplot(outmatched,aes(x=time,y=asym)) +
+    geom_line() +
+    ylim(-0.5,0.5) +
+    geom_hline(yintercept = 0, linetype="dashed") +
+    scale_x_reverse() +
+    coord_flip() +
+    labs(x="Test Duration (s)", y="Time Lag (s)") + 
+    # facet_grid(~test) +
+    theme(legend.position="none") +
+    ggtitle("Time Lag Asymmetry") +
+    theme_bw()
+  
+  p3 <- ggplot(outmatched,aes(x=time,y=asym2)) +
+    geom_line() +
+    ylim(-1,1) +
+    geom_hline(yintercept = 0, linetype="dashed") +
+    scale_x_reverse() +
+    coord_flip() +
+    labs(x="Test Duration (s)", y="Asymmetry") + 
+    # facet_grid(~test) +
+    theme(legend.position="none") +
+    ggtitle("Impact Asymmetry") +
+    theme_bw()
+  
+  grid.arrange(p2,p3, ncol=1)
+} else {
+  cat('\n', '<font size="3"><b>', "Missing/Bad", setdiff(c("L","R"),unique(out_dp$side)),"Pole Data", '</b></font>','\n')
+}
+```
+
+<br><br><br>
+
+
+<p style="font-weight:500; font-size:24px"> Normal </p>
+
+```{r Normal Pole, echo=FALSE, results='asis', warning=FALSE, message=FALSE, fig.height=8}
+out_norm <- pole3mt %>% 
+  filter(name==u) %>% 
+  filter(time<=185) 
+
+if(length(unique(out_norm$test))==2){
+  out_norm_1 <- out_norm %>% 
+    filter(test=="normal") %>% 
+    group_by(side) %>% 
+    mutate(impact2=filtfilt(bf,abs(impact)),
+           cad=frollmean(cadence,5))
+  
+  out_norm_2 <- out_norm %>% 
+    filter(test=="pole",side==unique(out_norm_1$side)) %>% 
+    group_by(side) %>% 
+    mutate(impact2=filtfilt(bf,abs(impact)),
+           cad=frollmean(cadence,5))
+  
+      if(nrow(out_norm_2)<=0){  
+    out_norm_2 <- out_norm %>% 
+      filter(test=="pole") %>% 
+      group_by(side) %>% 
+    mutate(impact2=filtfilt(bf,abs(impact)),
+           cad=frollmean(cadence,5))
+    cat('\n', '<font size="3"><b>', "NOTE: Comparison is using opposite sides due to missing/bad data", '</b></font>','\n')
+  }
+  
+  
+  p1 <- ggplot(out_norm_1, aes(end,cad, colour="red")) + 
+    geom_line() +
+    # geom_line(data=out,aes(x=end,y=cadence,colour="red")) + 
+    geom_line(data=out_norm_2,aes(x=end,y=cad,colour="blue")) +
+    # ylim(c(50,150)) +
+    labs(x="Time (s)", y="Cadence (spm)", title = "Cadence") +
+    scale_colour_discrete(name="Test", labels =c("DP", "Normal")) +
+    theme_bw() +
+    theme(legend.title=element_blank(),
+          legend.position=c(1,1),
+          legend.justification = c(1,1))
+  
+  
+  p2 <- ggplot(out_norm_1, aes(end,impact2, colour="red")) + 
+    geom_line() +
+    geom_line(data=out_norm_2,aes(x=end,y=impact2,colour="blue")) +
+    labs(x="Time (s)", y="Impact (g)", title = "Impact") +
+    scale_colour_discrete(name="Test", labels =c("DP", "Normal")) +
+    theme_bw() +
+    theme(legend.position = "none")
+  
+  grid.arrange(p1,p2,ncol=1, top=textGrob("Pole", gp=gpar(fontsize=16, font=3)))  
+} else {
+  cat('\n', '<font size="3"><b>', "Missing/Bad", setdiff(c("DP","Normal"),unique(out_norm$test)),"Test Data", '</b></font>','\n')
+  #cat("Missing/Bad",setdiff(c("pole","normal"),unique(out_norm$test)),"pole test data")
+}
+```
+
+<br><br>
+
+```{r Normal Boot, echo=FALSE, results='asis', warning=FALSE, message=FALSE, fig.height=12}
+out_norm_boot <- boot3mt %>% 
+  filter(name==u) %>% 
+  filter(time<=185)
+
+if(length(unique(out_norm_boot$test))==2) {
+  out1 <- out_norm_boot %>% 
+    filter(test=="normal") %>% 
+    group_by(side) %>% 
+    mutate(cad=frollmean(cadence,5),
+           airtime2=frollmean(airtime,5),
+           groundtime=frollmean(glide.time,5))
+  
+  
+  out2 <- out_norm_boot %>% 
+    filter(test=="skate", side==unique(out1$side)) %>% 
+    group_by(side) %>% 
+    mutate(cad=frollmean(cadence,5),
+           airtime2=frollmean(airtime,5),
+           groundtime=frollmean(glide.time,5))
+  
+  #If don't have matching sides to compare Normal to Free Skate
+  if(nrow(out2)<=0){  
+    out2 <- out_norm_boot %>% 
+      filter(test=="skate") %>% 
+      group_by(side) %>% 
+      mutate(cad=frollmean(cadence,5),
+             airtime2=frollmean(airtime,5),
+             groundtime=frollmean(glide.time,5))
+    cat('\n', '<font size="3"><b>', "NOTE: Comparison is using opposite sides due to missing data from Free Skate", '</b></font>','\n')
+  }
+  
+  p1 <- ggplot(out1, aes(time,cad, colour="red")) + 
+    geom_line() +
+    geom_line(data=out2,aes(x=time,y=cad,colour="blue")) +
+    labs(x="Time (s)", y="Cadence (spm)", title = "Cadence") +
+    scale_colour_discrete(name="Test", labels =c("Free Skate", "Normal")) +
+    theme_bw() +
+    theme(legend.title=element_blank(),
+          legend.position=c(1,1),
+          legend.justification = c(1,1))
+  
+  p2 <- ggplot(out1, aes(x=time, y=airtime2, colour="red")) +
+    geom_line() +
+    geom_line(data=out2,aes(x=time,y=airtime2, colour="blue")) + 
+    labs(x="Time (s)", y="Time (s)", title = "Boot in Air Time (Free Skate & Normal)") +
+    theme_bw() +
+    theme(legend.position="none")
+  
+  p3 <- ggplot(out1, aes(x=time, y=groundtime, colour="red")) +
+    geom_line() +
+    geom_line(data=out2,aes(x=time,y=groundtime, colour="blue")) + 
+    labs(x="Time (s)", y="Time (s)", title = "Boot on Ground Time (Free Skate & Normal)") +
+    theme_bw() +
+    theme(legend.position="none")
+  
+  p4 <- ggplot(out1, aes(x=time, y=ratio, colour="red")) +
+    geom_line() +
+    geom_line(data=out2,aes(x=time,y=ratio, colour="blue")) + 
+    labs(x="Time (s)", y="", title = "Boot Air/Ground Ratio (Free Skate & Normal)") +
+    theme_bw() +
+    theme(legend.position="none") +
+    geom_hline(yintercept = 1, linetype="dashed")
+  
+  
+  grid.arrange(p1,p2,p3,p4,ncol=1, top=textGrob("Skate", gp=gpar(fontsize=16, font=3)))
+} else if(length(unique(out_norm_boot$test))==1 & out_norm_boot$test=="normal" ){
+  cat('\n', '<font size="3"><b>', "NOTE: Only Showing data from Normal Skate since missing Free Skate Data", '</b></font>','\n')
+  
+    out1 <- out_norm_boot %>% 
+    filter(test=="normal") %>% 
+    group_by(side) %>% 
+    mutate(cad=frollmean(cadence,5),
+           airtime2=frollmean(airtime,5),
+           groundtime=frollmean(glide.time,5))
+    
+    p1 <- ggplot(out1, aes(time,cad, colour="red")) + 
+    geom_line() +
+    labs(x="Time (s)", y="Cadence (spm)", title = "Cadence") +
+    scale_colour_discrete(name="Test", labels =c( "Normal")) +
+    theme_bw() +
+    theme(legend.title=element_blank(),
+          legend.position=c(1,1),
+          legend.justification = c(1,1))
+  
+  p2 <- ggplot(out1, aes(x=time, y=airtime2, colour="red")) +
+    geom_line() +
+    labs(x="Time (s)", y="Time (s)", title = "Boot in Air Time (Normal)") +
+    theme_bw() +
+    theme(legend.position="none")
+  
+  p3 <- ggplot(out1, aes(x=time, y=groundtime, colour="red")) +
+    geom_line() +
+    labs(x="Time (s)", y="Time (s)", title = "Boot on Ground Time (Normal)") +
+    theme_bw() +
+    theme(legend.position="none")
+  
+  p4 <- ggplot(out1, aes(x=time, y=ratio, colour="red")) +
+    geom_line() +
+    labs(x="Time (s)", y="", title = "Boot Air/Ground Ratio (Normal)") +
+    theme_bw() +
+    theme(legend.position="none") +
+    geom_hline(yintercept = 1, linetype="dashed")
+  
+  
+  grid.arrange(p1,p2,p3,p4,ncol=1, top=textGrob("Skate", gp=gpar(fontsize=16, font=3)))
+  
+}else {
+  cat('\n', '<font size="3"><b>', "Skate - Missing/Bad Data", '</b></font>','\n')
+}
+
+```
+<br><br><br>
+
+##
+

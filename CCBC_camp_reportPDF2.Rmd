@@ -1,0 +1,926 @@
+---
+title: "2024 Cross Country BC May Camp"
+author: "Whistler, BC"
+date: "2024-05-16 to 2024-05-20"
+always_allow_html: true
+output: pdf_document
+header-includes:
+  \usepackage{fancyhdr}
+  \usepackage{float}
+---
+\addtolength{\headheight}{0cm}
+\pagestyle{fancyplain}
+\setlength{\headheight}{71.50471pt}
+
+
+\lhead{\includegraphics[height=2cm]{CCBC.jpg}}
+\rhead{\includegraphics[height=2cm]{CSIP.jpg}}
+
+<!-- \lhead{\includegraphics[height=2cm]{/Users/mingchangtsai/CSI Pacific Dropbox/Ming-Chang Tsai/Tsai/CSIP/projects/PSO/Cross Country BC/dashboard/CCBC dashboard/XC ski dashboard/code/CCBC.jpg}} -->
+<!-- \rhead{\includegraphics[height=2cm]{/Users/mingchangtsai/CSI Pacific Dropbox/Ming-Chang Tsai/Tsai/CSIP/projects/PSO/Cross Country BC/dashboard/CCBC dashboard/XC ski dashboard/code/CSI_LOGO_Eng-FR_PACIFIC.jpg}} -->
+\renewcommand{\headrulewidth}{0pt}
+\fancyfoot[L]{Prepared by: CSI Pacific}
+\fancyfoot[R]{`r format(Sys.time(), '%B %d, %Y')`}
+
+```{r setup, include=FALSE}
+library(pacman)
+p_load(tidyverse,knitr,kableExtra,gridExtra,lubridate,readxl,conflicted,ggradar,scales)
+# theme_set(theme_bw())
+conflict_prefer("filter","dplyr")
+conflict_prefer("poly","stats")
+options(knitr.kable.NA = '')
+
+# source("report_processing.R")
+# athlete <- c(field$fullname[field$Date>ddate],
+#              physiology$fullname[physiology$Date>ddate],
+#              nutri$fullname[nutri$Date>ddate],
+#              mental$fullname[mental$Date>ddate],
+#              therapy$fullname[therapy$Date>ddate]
+#              ) %>% unique() %>% sort()
+# 
+# m=46
+
+## athlete historic
+field1 <- field %>% 
+  filter(fullname==athlete[m])
+
+nutri1 <- nutri %>% 
+  filter(fullname==athlete[m])
+
+mental1 <- mental %>% 
+  filter(fullname==athlete[m])
+ifelse(nrow(mental1)==0, mental1_chunk <- mental_chunk <- FALSE, mental1_chunk <- TRUE)
+
+physiology1 <- physiology %>% 
+  filter(fullname==athlete[m]) %>% 
+  slice_head(n=5)
+ifelse(nrow(physiology1)==0,physiology1_chunk <- FALSE,physiology1_chunk <- TRUE)
+
+tmptherapy <- therapy %>% 
+  filter(fullname==athlete[m])
+
+tech1 <- technique %>% 
+  filter(fullname==athlete[m]) %>% 
+  group_by(technique) %>% 
+  slice_max(Timestamp) %>% 
+  ungroup()
+ifelse(nrow(tech1)==0,tech1_chunk <- FALSE,tech1_chunk <- TRUE)
+
+
+#### current athlete test
+field_ath <- field1 %>% filter(Date>ddate)
+
+nutri_ath <- nutri1 %>% filter(Date>ddate) %>% 
+  slice_max(Date,n=1,with_ties = F)
+
+physiology_ath <- physiology1 %>% filter(Date>ddate)
+ifelse(nrow(physiology_ath)==0, physiology_chunk <- FALSE, physiology_chunk <- TRUE)
+
+tech_ath <- tech1 %>% filter(Date>ddate)
+ifelse(nrow(tech_ath)==0, tech_chunk <- FALSE, tech_chunk <- TRUE)
+
+if(mental1_chunk){
+  mental_ath <- mental1 %>% filter(Date>ddate) %>% 
+    slice_max(Date,n=1,with_ties = F)
+  if(nrow(mental_ath)>0){mental_chunk <- TRUE}
+}
+
+therapy_ath <- tmptherapy %>% filter(Date>ddate)
+
+if(nrow(therapy_ath)>0){
+  therapy1 <- therapy_ath %>% 
+    select(4:9,12:15) %>% 
+    mutate(l_weight=ifelse(grepl("weight",l_single),1,0),
+           l_flexion=ifelse(grepl("trunk",l_single),1,0),
+           l_abd=ifelse(grepl("foot",l_single),1,0),
+           l_knee=ifelse(grepl("knee",l_single),1,0),
+           l_pelvis=ifelse(grepl("pelvis",l_single),1,0),
+           r_weight=ifelse(grepl("weight",r_single),1,0),
+           r_flexion=ifelse(grepl("trunk",r_single),1,0),
+           r_abd=ifelse(grepl("foot",r_single),1,0),
+           r_knee=ifelse(grepl("knee",r_single),1,0),
+           r_pelvis=ifelse(grepl("pelvis",r_single),1,0)) %>% 
+    select(1:6,11:20,8,10) %>% 
+    pivot_longer(1:18) %>% 
+    separate(name,c("side","var"),"_") %>% 
+    pivot_wider(names_from = "side", values_from = "value") %>% 
+    mutate(l2=l,
+           r2=r,
+           var=gsub("hipflexor|core|hip",NA,var),
+           var=gsub("single","Total Score",var),
+           var=gsub("pelvis","Pelvis stays level through squat",var),
+           var=gsub("knee","Knee valgus / varus less than 10 degrees",var),
+           var=gsub("abd","Hip abd / add less than 10 degrees",var),
+           var=gsub("flexion","Hip flexion greater than 65 degrees",var),
+           var=gsub("weight","Trunk Shifts laterally with weight transfer",var),
+    )
+  therapy1[2:3, 4:5] <- replace(therapy1[2:3, 4:5], therapy1[2:3, 4:5] == 1, 5)
+  
+  therapy2 <- therapy_ath %>% 
+    select(10:11) %>% 
+    mutate(lordosis=ifelse(grepl("lordosis",squat),1,0),
+           knee=ifelse(grepl("knee",squat),1,0),
+           trunk=ifelse(grepl("trunk",squat),1,0),
+           thigh=ifelse(grepl("thigh",squat),1,0)) %>% 
+    # rename("Total Score"=2) %>% 
+    pivot_longer(c(3:6,2)) %>% 
+    select(-1) %>% 
+    mutate(name=c("Maintains Lordosis","Keeps Knee Alignment","Keeps Trunk Parallel to shins","Can attain 90 degree thigh angle","Total Score"))
+  
+  therapy3 <- therapy_ath %>% 
+    select(16,18,20,22,24) %>% 
+    pivot_longer(2:5) %>% 
+    separate(name,c("side","body"), sep = "_") %>% 
+    pivot_wider(names_from = "side", values_from = "value") %>% 
+    mutate(l_target=round(l/foot,2),
+           r_target=round(r/foot,2),
+           symmetry=l-r,
+           # target=rowMeans(select(.,c(l,r)))/10,
+           # status=ifelse(target>=2 & abs(symmetry)<=4/2.54,"Pass","Fail"),
+    ) %>% 
+    select(foot,body,l,l_target,r,r_target,symmetry)
+  therapy_chunk <- TRUE
+} else {
+  therapy_chunk <- FALSE
+}
+
+```
+
+# Name: `r athlete[m]`
+# Age (on December 31, 2024): `r max(field1$age[1],nutri$age[1],physiology1$age[1])`
+
+<!-- - Time Difference: it is the difference in impact time between pole plants (left plant time - right plant time).  Negative number means LEFT pole plant was before RIGHT pole plant. -->
+<!-- - Impact: it is the difference between magnitude of impact over the average impact of both poles ((left impact - right impact) / average impact). Negative number means LEFT pole impact was higher than RIGHT pole impact. -->
+
+
+# Discipline Overview
+
+```{r overview, echo=FALSE, results='asis', warning=FALSE, message=FALSE}
+
+if(nrow(field_ath)>0){
+  out <- field_ath %>% 
+    # select(Sex,age,dp2k,run3k,matches("lower|upper")) %>% 
+    pivot_longer(dp2k:lower, names_to = "var", values_to = "score") %>% 
+    filter(!is.na(score)) %>%
+    mutate(score=ifelse(!grepl("lower|upper",var),format(as.POSIXlt(score, origin = "1970-01-01", tz = "UTC"), format = "%M:%S"),percent(score, accuracy=0.1)),
+           area="Field Testing",.before=Sex) %>% 
+    mutate(var=gsub("dp2k","2km Double Pole", var),
+           var=gsub("run3k","3km Running", var),
+           # var=gsub("bcds_upper","BCDS Upper %", var),
+           # var=gsub("bcds_lower","BCDS Lower %", var),
+           var=gsub("upper","Upper Body %", var),
+           var=gsub("lower","Lower Body %", var),
+           var=gsub("arm","Arm-Only", var),
+           var=gsub("leg","Leg-Only", var),
+           var=gsub("full","Normal Skate", var),
+    ) %>% 
+    select(-c(Sex:fullname))
+} else {
+  out <- data.frame(
+    area="Field Testing",
+    var=c("Arm-Only","Normal Skate","Leg-Only","Upper Body %","Lower Body %","2km Double Pole","3km Running"),
+    score=NA
+  )
+}
+
+
+if(nrow(nutri_ath)==0){
+  tmp <- data.frame(area="Nutrition",
+                    var=c("Grocery","Travel","Cooking"),
+                    score=NA)
+} else {
+  tmp <- nutri_ath %>%
+    select(grocery:cooking) %>%
+    pivot_longer(grocery:cooking,
+                 names_to = "var",
+                 values_to = "score") %>%
+    mutate(area="Nutrition",
+           var=stringr::str_to_title(var),
+           score=as.character(score))
+}
+out <- bind_rows(out,tmp)
+
+
+
+if(nrow(mental_ath)==0){
+  tmp <- data.frame(area="Mental Performance",
+                    var=c("Imaginal Skill", "Mental Preparation","Self-Efficacy","Cognitive Anxiety","Concentration Skill","Relaxation Skill","Motivation"),
+                    score=NA)
+} else {
+  tmp <- mental_ath %>%
+    select(Imaginal:Motivation) %>%
+    pivot_longer(Imaginal:Motivation,
+                 names_to = "var",
+                 values_to = "score") %>%
+    mutate(area="Mental Performance",
+           score=as.character(score),
+           var=gsub("Imaginal","Imaginal Skill", var),
+           var=gsub("Prep","Mental Preparation", var),
+           var=gsub("Efficacy","Self-Efficacy", var),
+           var=gsub("Anxiety","Cognitive Anxiety", var),
+           var=gsub("Concentration","Contration Skill", var),
+           var=gsub("Relaxation","Relaxation Skill", var))
+}
+out <- bind_rows(out,tmp)
+
+# if(nrow(therapy_ath)>0){
+#   tmp <- therapy1[c(1:3,nrow(therapy1)),] %>% 
+#     select(-l2,-r2) %>% 
+#     bind_rows(therapy2[5,] %>% rename(var=1,l=2)) %>% 
+#     mutate(l=as.character(l),
+#            r=as.character(r)) %>% 
+#     bind_rows(data.frame(var=therapy3$body,
+#                          l=ifelse(therapy3$l_target>=2 & therapy3$symmetry<=4/2.54,"Passed","Failed"),
+#                          r=ifelse(therapy3$r_target>=2 & therapy3$symmetry<=4/2.54,"Passed","Failed"))) %>% 
+#     mutate(var=c("Sidelying Hip Abduction Manual Muscle Test","Active Straight Leg Raise", "Modified Thomas Test","Simulated Double Pole Position & Signel Leg Squat","Double Leg Squat","Lower Body Motor control Screen","Upper Body Motor Control Screen"))
+# } else {
+#   tmp <- data.frame(var=c("Sidelying Hip Abduction Manual Muscle Test","Active Straight Leg Raise", "Modified Thomas Test","Simulated Double Pole Position & Signel Leg Squat","Double Leg Squat","Lower Body Motor control Screen","Upper Body Motor Control Screen"),
+#                     l=NA,
+#                     r=NA)
+# }
+
+
+out_ave <- out %>%
+  filter(area %in% c("Mental Performance","Nutrition")) %>%
+  select(area:score) %>%
+  mutate(score=as.numeric(score),
+         score=ifelse(area=="Mental Performance",score/48,score),
+         score=ifelse(area=="Nutrition",ifelse(var=="Cooking",score/55,score/35),score)) %>%
+  group_by(area) %>%
+  summarise(score=round(mean(score)*100))
+
+
+p <- kbl(out[-1], align="lc",
+         col.names=c(" ","Result")) %>%
+  kable_styling(bootstrap_options = c('hover'), font_size = 10, full_width = F, latex_options = "HOLD_position")
+
+for(i in unique(out$area)){
+  k <- which(out$area==i)
+  if(i %in% c("Nutrition","Mental Performance")){
+    j <- paste(i,"Overall Score = ",out_ave %>% filter(area==i) %>% pull(score),"%", sep = " ")
+  } else {
+    j <- i
+  }
+  p <- p %>%
+    pack_rows(j, k[1], last(k), label_row_css = "background-color: #666; color: #fff;")
+}
+
+p
+
+```
+
+```{r overview2, echo=FALSE, results='asis', warning=FALSE, message=FALSE}
+
+if(nrow(therapy_ath)>0){
+  tmp <- therapy1[c(1:3,nrow(therapy1)),] %>% 
+    select(-l2,-r2) %>% 
+    bind_rows(therapy2[5,] %>% rename(var=1,l=2)) %>% 
+    mutate(l=as.character(l),
+           r=as.character(r)) %>% 
+    bind_rows(data.frame(var=therapy3$body,
+                         l=ifelse(therapy3$l_target>=2 & therapy3$symmetry<=4/2.54,"Passed","Failed"),
+                         r=ifelse(therapy3$r_target>=2 & therapy3$symmetry<=4/2.54,"Passed","Failed"))) %>% 
+    mutate(var=c("Sidelying Hip Abduction Manual Muscle Test","Active Straight Leg Raise", "Modified Thomas Test","Simulated Double Pole Position & Signel Leg Squat","Double Leg Squat","Lower Body Motor control Screen","Upper Body Motor Control Screen"))
+} else {
+  tmp <- data.frame(var=c("Sidelying Hip Abduction Manual Muscle Test","Active Straight Leg Raise", "Modified Thomas Test","Simulated Double Pole Position & Signel Leg Squat","Double Leg Squat","Lower Body Motor control Screen","Upper Body Motor Control Screen"),
+                    l=NA,
+                    r=NA)
+}
+
+
+p <- kbl(tmp, align="lcc",
+         col.names=c("Physiotherapy Test","Left", "Right")) %>%
+  kable_styling(bootstrap_options = c('hover'), font_size = 10, full_width = F, latex_options = "HOLD_position")
+
+# for(i in 1:nrow(tmp)){
+#   p <- p %>%
+#     pack_rows(tmp$var[i], i, i, label_row_css = "background-color: #666; color: #fff;")
+# }
+
+p
+
+```
+
+\pagebreak
+
+## Technique Overview
+
+```{r technique, echo=FALSE, results='asis', warning=FALSE, message=FALSE, eval=tech_chunk}
+# options(knitr.kable.NA = '')
+# tech <- alltech %>%
+#   select(2:9,52:ncol(.))
+
+out1 <- tech_ath %>%
+  select("Age Group":technique,"Body Position":reposition_min) %>% 
+  arrange(discipline) %>% 
+  mutate(`Body Position`=substr(`Body Position`,1,500),
+         Timing=substr(Timing,1,500))
+
+
+# mutate(powerposition=cell_spec(powerposition, color = ifelse(powerposition_min >= 4, "green", ifelse(powerposition_min <=2,"red","yellow"))))
+
+twidth="4em"
+p <- kable(out1 %>% select(technique,powerposition:reposition), escape=FALSE, align="lcccccc",
+           col.names=c("Sub Technique","Power Position","Power Line","Ski Lift","Pole Plant","Leg Kick/Push","Reposition Phase")) %>%
+  kable_styling(font_size = 10, full_width = F, latex_options = "HOLD_position") %>%
+  add_header_above(c(" "=1,"Body Position"=3,"Timing"=3)) 
+
+p2 <- kable(out1 %>% select(technique:Timing), escape=FALSE, align="l",
+            col.names=c("Sub Technique","Body Position","Timing")) %>%
+  kable_styling(font_size = 10, full_width = FALSE, latex_options = "HOLD_position") %>%
+  add_header_above(c(" "=1,"Technique Category Focus"=2)) 
+
+q <- which(out1$discipline=="Classic")
+if(sum(q)>0){
+  p <- p %>% pack_rows("Classic",q[1],last(q))
+  p2 <- p2 %>% pack_rows("Classic",q[1],last(q))
+}
+
+q <- which(out1$discipline=="Skate")
+if(sum(q)>0){
+  p <- p %>% pack_rows("Skate",q[1],last(q))
+  p2 <- p2 %>% pack_rows("Skate",q[1],last(q))
+}
+
+p <- p %>% 
+  column_spec(2,width=twidth,background=ifelse(out1$powerposition_min >= 4, "green", ifelse(out1$powerposition_min <=2,"red","yellow"))) %>%
+  column_spec(3,width=twidth,background=ifelse(out1$powerline_min >= 4, "green", ifelse(out1$powerline_min <=2,"red","yellow"))) %>%
+  column_spec(4,width=twidth,background=ifelse(is.na(out1$skilift),"white",ifelse(out1$skilift_min >= 4, "green", ifelse(out1$skilift_min <=2,"red","yellow")))) %>%
+  column_spec(5,width=twidth,background=ifelse(out1$pole_min >= 4, "green", ifelse(out1$pole_min <=2,"red","yellow"))) %>%
+  column_spec(6,width=twidth,background=ifelse(is.na(out1$leg),"white",ifelse(out1$leg_min >= 4, "green", ifelse(out1$leg_min <=2,"red","yellow")))) %>%
+  column_spec(7,width=twidth,background=ifelse(out1$reposition_min >= 4, "green", ifelse(out1$reposition_min <=2,"red","yellow")))
+
+
+p2 <- p2 %>% 
+  column_spec(2:3,width="15em")
+
+
+p
+p2
+
+```
+
+
+\pagebreak
+
+
+\begin{center}
+\textbf{\Huge{DETAIL}}
+
+\vspace{5cm}
+
+\textbf{\Huge{DISCIPLINE}}
+
+\vspace{5cm}
+
+\textbf{\Huge{REPORTS}}
+
+\end{center}
+
+
+\pagebreak
+
+## Physiotherapy
+
+2024 Injury Survey Completed:  `r ifelse(nrow(therapy_ath)>0,ifelse(is.na(therapy_ath$injury),"No","Yes"),NA)`
+
+Present Complaints:  `r ifelse(nrow(therapy_ath)>0,therapy_ath$complaints,NA)`
+
+Previous Injuries:  `r ifelse(nrow(therapy_ath)>0,gsub("\r\n"," ",therapy_ath$prev_injury),NA)`
+
+### POSTURE OBSERVATION
+Comments: `r ifelse(nrow(therapy_ath)>0,ifelse(!is.na(therapy_ath$Comments),therapy_ath$Comments,NA),NA)`
+
+
+
+```{r therapy, echo=FALSE, results='asis', warning=FALSE, message=FALSE, eval=therapy_chunk}
+kable(therapy1 %>% select(1:3), escape=FALSE, align="lcc",
+      col.names=c("","Left","Right")) %>%
+  kable_styling(font_size = 10, full_width = FALSE, latex_options = "HOLD_position") %>%
+  pack_rows("Sidelying Hip Abduction Manual Muscle Test",1,1) %>% 
+  pack_rows("Active Straight Leg Raise",2,2) %>% 
+  pack_rows("Modified Thomas Test",3,3) %>% 
+  pack_rows("Simulated Double Pole Position & Signel Leg Squat",4,9) %>% 
+  # column_spec(1,bold = T) %>% 
+  column_spec(2,background=ifelse(is.na(therapy1$var)|grepl("Total",therapy1$var),ifelse(!is.na(therapy1$l2),ifelse(therapy1$l2==5, "green", "yellow"),"white"),"white")) %>%
+  column_spec(3,background=ifelse(is.na(therapy1$var)|grepl("Total",therapy1$var),ifelse(!is.na(therapy1$r2),ifelse(therapy1$r2==5, "green", "yellow"),"white"),"white"))
+```
+
+```{r therapy2, echo=FALSE, results='asis', warning=FALSE, message=FALSE, eval=therapy_chunk}
+
+kable(therapy2, escape=FALSE, align="lcc",
+      col.names=c("","Score")) %>%
+  kable_styling(font_size = 10, full_width = FALSE, latex_options = "HOLD_position") %>%
+  pack_rows("Double Leg Squat Position",1,5) %>% 
+  column_spec(2,background=ifelse(grepl("Total",therapy2$name),ifelse(!is.na(therapy2$value),ifelse(therapy2$value==4, "green", "yellow"),"white"),"white"))
+
+
+kable(therapy3 %>% select(-2), escape=FALSE, align="c",
+      col.names=c("Foot Length (in)","Max Left (in)","Left Target","Max Right (in)", "Right Target","Symmetry")) %>%
+  kable_styling(font_size = 10, full_width = FALSE, latex_options = "HOLD_position") %>%
+  pack_rows("Lower Body Motor Control Screen",1,1) %>% 
+  pack_rows("Upper Body Motor Control Screen",2,2) %>%
+  add_header_above(c(" ","Forward Reach"=4," ")) %>% 
+  column_spec(3,background=ifelse(is.na(therapy3$l_target),"white",ifelse(therapy3$l_target>=2, "green", "yellow"))) %>% 
+  column_spec(5,background=ifelse(is.na(therapy3$r_target),"white",ifelse(therapy3$r_target>=2, "green", "yellow"))) %>% 
+  column_spec(6,background=ifelse(is.na(therapy3$symmetry),"white",ifelse(therapy3$symmetry<=4/2.54, "green", "yellow")))
+
+
+```
+
+\textbf{\textcolor{green}{Green}} - Sport-related movement quality is not compromised; athlete is healthy and able to perform all training optimally.
+
+\textbf{\textcolor{yellow}{Yellow}} - Movement quality and or strength is compromised and or the athlete is dealing with some low levels of chronic injury.  The athlete is working with physiotherapy, a strength and conditioning coach and their local ski coach to specifically correct the movement quality.
+
+<!-- \textbf{\textcolor{red}{Red}} - Pain with testing. -->
+
+\pagebreak
+
+
+# Double Pole
+
+```{r dp, echo=FALSE, results='asis', warning=FALSE, message=FALSE, fig.height=3}
+out <- field1 %>%
+  select(Sex,age,Date,dp2k) %>%
+  filter(!is.na(dp2k)) %>%
+  group_by(age) %>%
+  filter(dp2k==min(dp2k)) %>%
+  rename(athlete=dp2k) %>%
+  left_join(field %>% 
+              # filter(fullname!=athlete[m]) %>% 
+              group_by(age,fullname) %>% 
+              slice_min(dp2k, with_ties = F) %>% 
+              group_by(age,Sex) %>% 
+              summarise(ave=mean(dp2k,na.rm=TRUE)), by=c("Sex","age")) %>%
+  left_join(field %>% 
+              # filter(fullname!=athlete[m]) %>% 
+              group_by(age,fullname) %>% 
+              slice_min(dp2k, with_ties = F) %>% 
+              group_by(age,Sex) %>% 
+              slice_min(dp2k,n=3,with_ties=F) %>% 
+              summarise(top3=mean(dp2k,na.rm=TRUE)), by=c("Sex","age")) %>% 
+  select(-Date,-Sex) %>%
+  pivot_longer(athlete:top3) %>% 
+  mutate(value=as.POSIXct(value, origin = "1970-01-01", tz = "UTC"))
+
+
+if(nrow(out)>0){
+  ggplot(out, aes(x=age, y=value, color=name)) +
+    geom_point() +
+    geom_line() +
+    theme_bw() +
+    theme(legend.position = "bottom",
+          legend.title = element_blank()) +
+    scale_x_continuous(breaks = seq(min(out$age),max(out$age))) +
+    scale_y_datetime(date_labels = "%M:%S", date_breaks = "15 sec") +
+    labs(x="Age (yrs)", y = "Time (MM:SS)")
+} else {
+  cat("No double pole data!")
+}
+
+```
+
+# 3km Running
+
+```{r running, echo=FALSE, results='asis', warning=FALSE, message=FALSE, fig.height=3}
+out <- field1 %>%
+  select(Sex,age,Date,run3k) %>%
+  filter(!is.na(run3k)) %>%
+  group_by(age) %>%
+  filter(run3k==min(run3k)) %>%
+  rename(time_s=run3k) %>% 
+  mutate(name="athlete") %>% 
+  select(-Date) %>% 
+  bind_rows(field_std %>% 
+              filter(test=="run3k",Sex==field1$Sex[1]) %>% 
+              select(-test,-time) %>% 
+              mutate(name="standard")) %>% 
+  mutate(value=as.POSIXct(time_s, origin = "1970-01-01", tz = "UTC"))
+
+
+
+
+if(nrow(out)>0){
+  ggplot(out, aes(x=age, y=value, color=name)) +
+    geom_point() +
+    geom_line() +
+    theme_bw() +
+    theme(legend.position = "bottom",
+          legend.title = element_blank()) +
+    scale_x_continuous(breaks = seq(min(out$age),max(out$age))) +
+    scale_y_datetime(date_labels = "%M:%S", date_breaks = "15 sec") +
+    labs(x="Age (yrs)", y = "Time (MM:SS)")
+} else {
+  cat("No running data!")
+}
+
+
+```
+
+\pagebreak
+
+# Nutrition
+
+## Report Food Skills
+
+<!-- ```{r nutrition, echo=FALSE, results='asis', warning=FALSE, message=FALSE, fig.height=3, fig.align='center'} -->
+<!-- out <- nutri %>% -->
+<!--   mutate(grocery=grocery/35, travel=travel/35, cooking=cooking/55) -->
+
+<!-- if(nrow(out)==0){ -->
+<!--   out <- data.frame(fullname=myname, -->
+<!--                     grocery=0, -->
+<!--                     travel=0, -->
+<!--                     cooking=0) -->
+<!-- } -->
+
+<!-- ggradar(out %>% select(fullname,grocery,travel,cooking), -->
+<!--         plot.title = "", -->
+<!--         base.size=6, -->
+<!--         group.point.size = 2, -->
+<!--         axis.label.size = 3, -->
+<!--         grid.label.size = 4) -->
+
+<!-- ``` -->
+
+```{r nutrition, echo=FALSE, results='asis', warning=FALSE, message=FALSE, fig.height=3, fig.align='center'}
+out <- nutri_ath %>%
+  select(1:34) %>% 
+  pivot_longer(10:ncol(.)) %>% 
+  pivot_longer(grocery:cooking, names_to = "area", values_to = "value2") %>% 
+  # separate(name, c("area2","questions"), sep = "\\. ") %>% 
+  mutate(area2=substr(name,1,1),
+         name=trimws(substr(name,5,nchar(name)))) %>% 
+  filter((area=="grocery" & area2=="A") | (area=="travel" & area2=="B") | (area=="cooking" & area2=="C")) %>% 
+  select(-c(score:eat,area2))
+
+p <- kbl(out[1:2], align="lc",
+         col.names=c(" ","Score")) %>%
+  kable_styling(bootstrap_options = c('hover'), font_size = 10, full_width = F, latex_options = "HOLD_position") %>% 
+  column_spec(1, width = "40em")
+
+
+for(i in unique(out$area)){
+  k <- which(out$area==i)
+  j <- paste(str_to_title(i),"Score:",unique(out$value2[out$area==i]),"/35", sep = " ")
+  if(i=="grocery"){
+    if(unique(out$value2[out$area==i])>=28){
+      j <- paste(j,"(above 80%), keep up the good work!", sep = " ")
+    } else if(unique(out$value2[out$area==i])<=20){
+      j <- paste(j,"(<60%), Talk to your dietitian to discuss strategies to improve your grocery shopping & meal planning skills.", sep = " ")
+    } else{
+      j <- paste(j,"(60-80%), Let's develop further your grocery shopping and meal preparation skills by practicing more often.", sep = " ")
+    }
+  } else if(i=="travel"){
+    if(unique(out$value2[out$area==i])>=28){
+      j <- paste(j,"(above 80%), keep up the good work!", sep = " ")
+    } else if(unique(out$value2[out$area==i])<=20){
+      j <- paste(j,"(<60%), Talk to your dietitian to discuss strategies to improve your travel/extreme environment nutrition.", sep = " ")
+    } else{
+      j <- paste(j,"(60-80%), Pay attention to your travel and/or extreme environment nutrition.", sep = " ")
+    }
+  } else {
+    if(unique(out$value2[out$area==i])>=44){
+      j <- paste(j,"(above 80%), Keep up the good work!", sep = " ")
+    } else if(unique(out$value2[out$area==i])<=33){
+      j <- paste(j,"(<60%), Talk to your dietitian to discuss strategies to improve your cooking skills.", sep = " ")
+    } else{
+      j <- paste(j,"(60-80%), Practice makes perfect, especially regarding cooking skills. Consider setting a goal for yourself around cooking more often at home or trying new recipes.", sep = " ")
+    }
+    
+  }
+  p <- p %>%
+    pack_rows(j, k[1], last(k), label_row_css = "background-color: #666; color: #fff;")
+}
+
+p
+```
+
+
+```{r nutrition2, echo=FALSE, results='asis', warning=FALSE, message=FALSE}
+recom <- read_xlsx("../reference/nutrition_recommendations.xlsx",sheet = "screening")
+
+if(nrow(nutri_ath)==0){
+  out <- data.frame(Pillar=c("Relationship With Food","Clinical","Energy Availability","Vitamin D"),
+                    Result=NA,
+                    Recommendation=NA)
+} else {
+  out <- nutri_ath %>%
+    select(fullname,eat) %>%
+    rename(Score=2) %>%
+    mutate(Pillar="Relationship With Food",
+           rec=ifelse(Score>=11,recom %>% filter(pillar=="relationship with food",score==">=11") %>% pull(recommendation),recom %>% filter(pillar=="relationship with food",score=="<11") %>% pull(recommendation)),
+           Score=as.character(Score)) %>%
+    select(Pillar,Score,rec)
+  
+  out <- bind_rows(out,data.frame(Pillar="Clinical",
+                                  Score=ifelse(nutri_ath$fe50=="No", "Fe >= 50 ng/mL",
+                                               ifelse(nutri_ath$fe35=="No", "Fe 35-50 ng/mL", "Fe < 35 ng/mL")),
+                                  rec=ifelse(nutri_ath$fe50=="No",
+                                             recom %>% filter(pillar=="clinical",score==">=50") %>% pull(recommendation),
+                                             recom %>% filter(pillar=="clinical",score=="<50") %>% pull(recommendation))))
+  
+  
+  out <- bind_rows(out, data.frame(Pillar="Energy Availability",
+                                   Score=as.character(nutri_ath$leaf),
+                                   rec=ifelse(nutri_ath$leaf=="FLAG",
+                                              recom %>% filter(pillar=="energy availability",score=="FLAG") %>% pull(recommendation),
+                                              ifelse(nutri_ath$leaf>=8,
+                                                     recom %>% filter(pillar=="energy availability",score==">=8") %>% pull(recommendation),
+                                                     recom %>% filter(pillar=="energy availability",score=="<8") %>% pull(recommendation)))))
+  
+  
+  out <- bind_rows(out,data.frame(Pillar="Vitamin D",
+                                  Score=nutri_ath$vita_d,
+                                  rec=ifelse(nutri_ath$vita_d=="yes",
+                                             recom %>% filter(pillar=="vitamin D",score=="yes") %>% pull(recommendation),
+                                             recom %>% filter(pillar=="vitamin",score=="no") %>% pull(recommendation))))
+}
+
+
+kable(out, escape=FALSE, align="l",
+      col.names=c("Pillar","Result", "Recommendation")) %>%
+  kable_styling(bootstrap_options = c('hover'), font_size = 10, full_width = F, latex_options = "HOLD_position") %>%
+  column_spec(2, width = "5em") %>%
+  column_spec(3, width = "30em")
+```
+
+
+<!-- ## Exercise-Based Results -->
+
+<!-- ```{r nutrition3, echo=FALSE, results='asis', warning=FALSE, message=FALSE} -->
+<!-- # options(knitr.kable.NA = '') -->
+<!-- recom <- read_xlsx("../reference/nutrition_recommendations.xlsx",sheet = "exercise-based") -->
+
+<!-- if(nrow(nutri)==0){ -->
+<!--   out <- data.frame(Pillar=c("Periodization","Fueling Training","Race Nutrition","Hydration"), -->
+<!--                     Score=NA, -->
+<!--                     rec=NA) -->
+<!-- } else { -->
+<!--   out <- data.frame(Pillar="Periodization", -->
+<!--                     Score=nutri$Periodization) %>% -->
+<!--     mutate(rec=ifelse(is.na(nutri$Periodization),NA,recom %>% filter(area=="periodization",result==nutri$Periodization) %>% pull(recommendation))) -->
+
+<!--   out <- bind_rows(out,data.frame(Pillar="Fueling Training", -->
+<!--                                   Score=nutri$Fueling) %>% -->
+<!--                      mutate(rec=ifelse(is.na(nutri$Fueling),NA,recom %>% filter(area=="fuelling",result==nutri$Fueling) %>% pull(recommendation)))) -->
+
+<!--   out <- bind_rows(out,data.frame(Pillar="Race Nutrition", -->
+<!--                                   Score=nutri$race_nutri) %>% -->
+<!--                      mutate(rec=ifelse(is.na(nutri$race_nutri),NA,recom %>% filter(area=="race",result==nutri$race_nutri) %>% pull(recommendation)))) -->
+
+<!--   out <- bind_rows(out,data.frame(Pillar="Hydration", -->
+<!--                                   Score=nutri$Hydration) %>% -->
+<!--                      mutate(rec=ifelse(is.na(nutri$Hydration),NA,recom %>% filter(area=="hydration",result==nutri$Hydration) %>% pull(recommendation)))) -->
+<!-- } -->
+
+
+<!-- kable(out, escape=FALSE, align="l", -->
+<!--       col.names=c("Areas","Result", "Recommendation")) %>% -->
+<!--   kable_styling(bootstrap_options = c('hover'), font_size = 10, full_width = F, latex_options = "HOLD_position") %>% -->
+<!--   column_spec(2, width = "10em", background = ifelse(out$Score=="optimal","green",ifelse(grepl("changes",out$Score),"red","yellow"))) %>% -->
+<!--   column_spec(3, width = "30em")  -->
+
+<!-- ``` -->
+
+
+\pagebreak
+
+## Physiology
+
+```{r step, echo=FALSE, results='asis', warning=FALSE, message=FALSE, fig.height=4, eval=physiology1_chunk}
+out <- physiology1 %>%
+  select(Date,WR1:BLa10) %>%
+  pivot_longer(WR1:WR10,
+               names_to = c("var","stage"),
+               names_pattern = "([A-Za-z]+)(\\d+)",
+               values_to = "spd") %>%
+  pivot_longer(BLa1:BLa10,
+               names_to = c("var2","stage2"),
+               names_pattern = "([A-Za-z]+)(\\d+)",
+               values_to = "bla") %>%
+  filter(stage==stage2) %>%
+  pivot_longer(HR1:HR10,
+               names_to = c("var3","stage3"),
+               names_pattern = "([A-Za-z]+)(\\d+)",
+               values_to = "hr") %>%
+  filter(stage==stage3) %>%
+  select(-var,-var2,-var3,-stage2,-stage3) %>%
+  filter(complete.cases(.))
+
+
+# mod <- lm(bla~poly(spd,3),out)
+# pred <- data.frame(spd=seq(round(min(out$spd))-1,round(max(out$spd))+1,by=0.01)) %>%
+#   mutate(lactate=round(predict(mod,data.frame(spd=spd)),2))
+
+# hr_mod <- lm(hr~poly(spd,3),out)
+# pred <- pred %>%
+#   mutate(hr=round(predict(hr_mod,data.frame(spd=spd)),2))
+
+colors <- c("HR" = "black", "Lactate" = "blue")
+
+normalizer <- max(out$hr)/max(out$bla)
+ggplot(out, aes(x=spd, y=bla, color=as.factor(Date))) +
+  theme_bw() +
+  geom_point(aes(y=bla)) +
+  geom_line(aes(y=bla)) +
+  # geom_line(aes(y=bla, color="Lactate")) +
+  # geom_line(aes(y=hr/normalizer, color="HR")) +
+  geom_point(aes(y=hr/normalizer)) +
+  geom_line(aes(y=hr/normalizer), linetype="dashed") +
+  scale_y_continuous(sec.axis=sec_axis(~.*normalizer, name="Heart Rate (bpm)",
+                                       breaks = seq(100,220,40))) +
+  scale_x_continuous(breaks = seq(floor(min(out$spd)), ceiling(max(out$spd)), by = 1)) +
+  theme(legend.title=element_blank(),
+        legend.position=c(1,0),
+        legend.justification = c(1,0)) +
+  labs(x="Speed (km/h)", y = "Lactate (mmol/L)", color="Legend")
+
+
+```
+
+
+<!-- ```{r step2, echo=FALSE, results='asis', warning=FALSE, message=FALSE} -->
+<!-- # options(knitr.kable.NA = '') -->
+<!-- if(nrow(physiology_ath)==0){ -->
+<!--   out1 <- data.frame(Lactate=c(2,4,6), -->
+<!--                      spd=NA, -->
+<!--                      hr=NA) -->
+<!-- } else { -->
+<!--   # out1 <- pred %>% filter(lactate<=2) %>% top_n(1,wt=lactate) %>% -->
+<!--   #   bind_rows(.,pred %>% filter(lactate<=4) %>% top_n(1,wt=lactate)) %>% -->
+<!--   #   bind_rows(.,pred %>% filter(lactate<=6) %>% top_n(1,wt=lactate)) %>% -->
+<!--   # out1 <- pred %>% filter(lactate<=2) %>% slice_max(lactate,n=1, with_ties = F) %>% -->
+<!--   #   bind_rows(.,pred %>% filter(lactate<=4) %>% slice_max(lactate,n=1,with_ties = F)) %>% -->
+<!--   #   bind_rows(.,pred %>% filter(lactate<=6) %>% slice_max(lactate,n=1,with_ties = F)) %>% -->
+<!--   #   mutate(lactate=round(lactate), -->
+<!--   #          spd=round(spd,1)) %>% -->
+<!--   #   select(lactate, spd, hr) -->
+<!--   out1 <- physiology_ath %>%  -->
+<!--     select(LT2WR,LT2HR,LT2Bla,) -->
+
+<!-- } -->
+
+
+<!-- kable(out1, escape=FALSE, align="c", -->
+<!--       col.names=c("Lactate (mmol/L)", "Speed (km/h)", "Heart Rate (bpm)")) %>% -->
+<!--   kable_styling(bootstrap_options = c('hover'), font_size = 14, full_width = FALSE, latex_options = "HOLD_position") -->
+
+<!-- ``` -->
+
+### Approximate Training Zones
+
+The training zones below are estimates based on lactates produced during your last step-test. These estimates are more likely accurate and compared to the surface and weather the lactate step test was conducted (for example, if your step test was on a track in great weather, the training zones will only be relevant to similar tracks in similar weather, as the training zones will be a lot different than if your step test was done on rollers (for example)). Remember, that fatigue, weather, hydration status, carbohydrate intake (muscle glycogen) aging and altitude can all impact on the HR and lactate zone estimations. They are estimates only, and should only guide training - always refer to feedback from your coach.
+
+```{r step3, echo=FALSE, results='asis', warning=FALSE, message=FALSE, eval=physiology_chunk}
+out <- data.frame(matrix(NA,nrow=6,ncol=6))
+out[,1] <- c("1a","1b",2:5)
+out[,6] <- c("Sub-aerobic (Easy, LSD, Recovery)", "Aerobic Threshold (LT1)", "Transition (Moderate Intensity)", "Anaerobic Threshold (LT2)", "Critical Speed (Race Pace)", "Maximum Aerobic Speed")
+
+if(nrow(physiology_ath)>0){
+  out[,2] <- physiology_ath %>% select(Z1aHR, Z1bHR, Z2HR, Z3HR, Z4HR, Z5HR) %>%
+    mutate(Z1aHR=ifelse(is.na(Z1aHR),NA,paste("<=",Z1aHR)),
+           Z5HR=ifelse(is.na(Z5HR),NA,paste(">",Z5HR))) %>%
+    pivot_longer(1:6) %>% pull(value)
+  
+  out[,3] <- physiology_ath %>% select(matches("^Z.*LowWR")) %>%
+    mutate(Z1a=ifelse(is.na(Z1aLowWR),NA,paste("<=",Z1aLowWR)),
+           Z1b=ifelse(is.na(Z1bLowWR) | is.na(Z2LowWR),NA,paste(Z1bLowWR,Z2LowWR,sep = " - ")),
+           Z2=ifelse(is.na(Z2LowWR) | is.na(Z3LowWR),NA,paste(Z2LowWR,Z3LowWR,sep = " - ")),
+           Z3=ifelse(is.na(Z3LowWR) | is.na(Z4LowWR),NA,paste(Z3LowWR,Z4LowWR,sep = " - ")),
+           Z4=ifelse(is.na(Z4LowWR) | is.na(Z5LowWR),NA,paste(Z4LowWR,Z5LowWR,sep = " - ")),
+           Z5=ifelse(is.na(Z5LowWR),NA,paste(">",Z5LowWR))) %>%
+    select(-matches("WR")) %>% unlist()
+  
+  out[,4] <- physiology_ath %>% select(matches("Fast3k")) %>%
+    # select(-1) %>%
+    pivot_longer(1:ncol(.)) %>%
+    mutate(value=format(value, format = "%H:%M")) %>%
+    pivot_wider(names_from = "name",
+                values_from = "value") %>%
+    # mutate(z1=ifelse(is.na(Z1aFast3k),NA,">="),.before=Z1aFast3k) %>%
+    mutate(z5=ifelse(is.na(Z4Fast3k),NA,"<")) %>% unlist()
+  
+  out[,5] <- physiology_ath %>% select(matches("Slow3k")) %>%
+    pivot_longer(1:6) %>%
+    mutate(value=format(value, format = "%H:%M")) %>%
+    pull(value)
+  
+}
+
+
+p <- kbl(out, escape=FALSE, align="c",
+         col.names=c("Zone", "bpm", "kph", "Fast Pace","Slow Pace","Description"),
+) %>%
+  kable_styling(font_size = 12, full_width = FALSE, latex_options = "HOLD_position")
+
+my_background <- colorRampPalette(c("yellow", "red"))(12)
+for(i in 1:nrow(out)){
+  p <- p %>% row_spec(i,color="black",background=my_background[2*i])
+}
+p
+
+
+```
+
+\pagebreak
+
+# Mental Performance
+
+```{r mental, echo=FALSE, results='asis', warning=FALSE, message=FALSE, fig.height=4, fig.align='center',eval=mental1_chunk}
+# if(nrow(mental_ath)==0){
+#   out1 <- data.frame(fullname=athlete[m],
+#                      var=c("Imaginal Skill", "Mental Preparation","Self-Efficacy","Cognitive Anxiety","Concentration Skill","Relaxation Skill","Motivation"),
+#                      score=0)
+# } else {
+out1 <- mental1 %>%
+  select(Date,Imaginal:Motivation) %>%
+  pivot_longer(Imaginal:Motivation,
+               names_to = "var",
+               values_to = "score") %>%
+  mutate(var=gsub("Imaginal","Imaginal Skill", var),
+         var=gsub("Prep","Mental Preparation", var),
+         var=gsub("Efficacy","Self-Efficacy", var),
+         var=gsub("Anxiey","Cognitive Anxiety", var),
+         var=gsub("Concentration","Concentration Skill", var),
+         var=gsub("Relaxation","Relaxation Skill", var))
+# }
+
+out <- out1 %>%
+  mutate(score=score/48) %>%
+  pivot_wider(names_from = "var",
+              values_from = "score")
+
+ggradar(out,
+        plot.title = "",
+        # base.size=6,
+        group.point.size = 2,
+        axis.label.size = 3,
+        grid.label.size = 4) +
+  theme(legend.position = "bottom",
+        legend.text = element_text(size=8))
+
+```
+
+<!-- \vspace{0.25in} -->
+
+```{r mental2, echo=FALSE, results='asis', warning=FALSE, message=FALSE,eval=mental_chunk}
+# options(knitr.kable.NA = '')
+out1 <- out1 %>% 
+  filter(Date==max(Date)) %>% 
+  select(-Date)
+
+kable(out1, escape=FALSE, align="l",
+      col.names=c("Skills", "Score (/48)")) %>%
+  kable_styling(bootstrap_options = c('hover'), font_size = 10, full_width = FALSE, latex_options = "HOLD_position")
+
+```
+
+\textbf{\textcolor{black}{Imaginal skills}} -  using your senses (e.g., see, feel, hear, taste, smell) to rehearse your sport in your mind.
+
+\textbf{\textcolor{black}{Mental Preparation}} -  technical learning and strategies to better manage mental, emotional and physical performance and its environment.
+
+\textbf{\textcolor{black}{Self-efficacy}} - an athlete's belief in the ability to perform a successful action to achieve a specific outcome in athletic performance.
+
+\textbf{\textcolor{black}{Cognitive Anxiety}} - Cognitive anxiety is the mental/emotional component of anxiety which relates to the athlete's psychological processes and thoughts
+
+\textbf{\textcolor{black}{Concentration skill}} - the ability to attend to the task at hand and minimize the internal and external distractions that can have a negative impact on your performance
+
+\textbf{\textcolor{black}{Relaxation skill}} - used to reduce anxiety and manage arousal levels
+
+\textbf{\textcolor{black}{Motivation}} -  a mental process that initiates, sustains or guides an athlete's behaviour (intrinsic and extrinsic).
+
+
+## Individual Technique Checklist
+
+```{r technique2, echo=FALSE, results='asis', warning=FALSE, message=FALSE, eval=tech_chunk}
+# options(knitr.kable.NA = '')
+for(mm in 1:nrow(tech_ath)){
+  out1 <- tech_ath[mm,] %>%
+    pivot_longer(cols = c(-c(1:8,"Body Position":ncol(.)))) %>%
+    janitor::remove_empty("cols") %>%
+    filter(!is.na(value)) %>% 
+    separate(name,c("area","description"), sep = " \\[") %>%
+    mutate(description = str_replace(description, "\\].*$", ""))
+  
+  p <- out1 %>%
+    select(description,value) %>%
+    kbl(., escape = FALSE, align = 'lc',
+        col.names = c(" ","Score (out of 5)"),
+        caption = paste(unique(out1$discipline),unique(out1$technique),sep = " - ")) %>%
+    kable_styling(font_size = 10, full_width = FALSE, latex_options = "HOLD_position") %>%
+    column_spec(1,width = "15cm")
+  # add_header_above(c(" "=1,"Technique Category Focus"=2))
+  
+  a <- unique(out1$area)
+  
+  for(kk in a){
+    p <- p %>%  pack_rows(kk,which(out1$area==kk)[1],last(which(out1$area==kk)))
+  }
+  print(p)
+  
+  # cat("\\pagebreak")
+}
+
+```
+

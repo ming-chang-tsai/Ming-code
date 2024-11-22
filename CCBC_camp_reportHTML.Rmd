@@ -1,0 +1,286 @@
+---
+title: <center><b>Cross Country BC</b></center>
+subtitle: <center>Camp Report</center>
+author: "Prepared By: Ming-Chang Tsai"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output: html_document
+---
+
+
+<img src='CSI_LOGO_Eng-FR_PACIFIC.png' style='position:absolute;top:0px;right:0px;' height='120' width='200' >
+<img src='CCBC.jpg' style='position:absolute;top:0px;left:0px;' height='120' width='120' >
+
+<br>
+<br>
+
+
+```{r setup, include=FALSE}
+library(tidyverse) 
+library(knitr)
+library(kableExtra)
+library(gridExtra)
+library(leaflet)
+library(trackeR)
+library(signal)
+library(zoo)
+library(data.table)
+library(grid)
+library(lubridate)
+library(readxl)
+
+# u <- "tallon"
+# dp200 <- read_csv('emmanuelle_dp200_sample.csv') %>% mutate(impact=abs(impact))
+# dp2k <- read_csv('emmanuelle_dp2k_sample.csv') %>% mutate(impact=abs(impact))
+# a <- seconds_to_period(last(dp2k$end))
+# pole3mt <- read_csv('pole3mt_tallon_sample.csv') %>% mutate(impact=abs(impact))
+# boot3mt <- read_csv('skate3mt_tallon_sample.csv') %>% 
+#   mutate(airtime=glide.start-boot.up,
+#          ratio=airtime/glide.time)
+# 
+# bf <- butter(3,0.1)
+# g <- readTCX('ski.tcx') %>% mutate(time=row_number())
+# gpsdata <- g %>% 
+#   # mutate(time=row_number()) %>% 
+#   dplyr::filter(time>=2383 & time<=2579) %>% 
+#   mutate(time=row_number()-1,
+#          distance=distance-distance[1],
+#          speed=filtfilt(bf,speed,),
+#          hr=frollmean(heart_rate,n=5))
+# 
+# ## step test data
+# stepdata <- read_xlsx('20200727_XCski_ManhardCopy.xlsm',1,skip=5) %>% 
+#   select(c(1:37,111,113,117,119:120,123,125:126,129,131:132,135,137:138,141,143))         # mph
+# colnames(stepdata)[c(5,6,8:ncol(stepdata))] <- c('height','weight',
+#                                                  paste0("spd",1:10), 
+#                                                  paste0("hr",1:10), 
+#                                                  paste0("lact",1:10),
+#                                                  "z1.hr",'z1.spd1',
+#                                                  "z2.hr",'z2.spd1','z2.spd2',
+#                                                  "z3.hr",'z3.spd1','z3.spd2',
+#                                                  "z4.hr",'z4.spd1','z4.spd2',
+#                                                  "z5.hr",'z5.spd1','z5.spd2',
+#                                                  "z6.hr",'z6.spd1')
+# stepdata <- stepdata %>% 
+#   mutate(height=as.numeric(height),
+#          weight=as.numeric(weight))
+# 
+# nutri <- read_xlsx('nutrition/Raw data screening 2020.xlsx',1)
+
+```
+
+##  {.tabset .tabset-pills .tabset-fade}
+
+<p style="font-weight:500; font-size:32px; color: #0051A5"> Name: Athlete </p>
+<br>
+<br>
+
+
+### Double Pull
+
+<p style="font-weight:500; font-size:16px"> Test Date: September 25, 2019</p>
+<p style="font-weight:500; font-size:16px"> Test Location: Callahan Road, Whistler, BC</p>
+<br><br>
+
+<p style="font-weight:500; font-size:24px"; color: #0051A5"> 200m </p>
+
+There are 2 ways to assess pole asymmetry.
+
+- Time Difference: it is the difference in impact time between pole plants (left plant time - right plant time).  Negative number means LEFT pole plant was before RIGHT pole plant.
+- Impact: it is the difference between magnitude of impact over the average impact of both poles ((left impact - right impact) / average impact). Negative number means LEFT pole impact was higher than RIGHT pole impact.
+
+<br>
+
+
+
+### 3-Min All-Out Test
+
+<p style="font-weight:500; font-size:16px"> Test Date: September 28, 2019 </p>
+<p style="font-weight:500; font-size:16px"> Test Location: Callahan Road, Whistler, BC </p>
+
+<br><br>
+
+<p style="font-weight:500; font-size:24px"> GPS </p>
+
+Boot Air Time is defined as when the boot is off the ground and Boot Gournd Time is when the boot is on the ground. Boot Air to Ground ratio is air time over ground time, so 1 means you spent equal time in the air and ground during the stroke while value greater than 1 means you spent more time off the gound and value less than 1 means you spent more time on the ground.
+
+### Lactate Test
+
+<p style="font-weight:500; font-size:16px"> Test Date: September 27, 2019</p>
+<p style="font-weight:500; font-size:16px"> Test Location: Whistler Athletic Center, Whistler, BC</p>
+
+<br><br>
+
+<!-- ```{r echo=FALSE, results='asis', warning=FALSE, message=FALSE} -->
+<!-- ## physiology data -->
+<!-- out <- stepdata[1,] %>%  -->
+<!--   select(8:37) %>%  -->
+<!--   gather(key,value,spd1:lact10) %>%  -->
+<!--   extract(key,c("variable","stage"), "([[:alnum:]]+)([[:alnum:]]+)") %>% -->
+<!--   mutate(variable=gsub("1","",variable), -->
+<!--          stage=as.numeric(gsub(0,10,stage))) %>%  -->
+<!--   spread(variable,value) %>%  -->
+<!--   filter_all(all_vars(!is.na(.))) -->
+
+
+
+<!-- colors <- c("HR" = "black", "Lactate" = "blue") -->
+
+<!-- normalizer <- max(out$hr,na.rm=T)/max(out$lact,na.rm=T) -->
+<!-- p1 <- ggplot(out, aes(x=spd)) + -->
+<!--   # scale_x_continuous(breaks = seq(min(out$stage),max(out$stage))) + -->
+<!--   theme_bw() + -->
+<!--   geom_line(aes(y=lact, color="Lactate")) + -->
+<!--   geom_line(aes(y=hr/normalizer, color="HR")) +  -->
+<!--   scale_y_continuous(sec.axis=sec_axis(~.*normalizer, name="Heart Rate (bpm)")) + -->
+<!--   theme(legend.title=element_blank(), -->
+<!--         legend.position=c(1,0), -->
+<!--         legend.justification = c(1,0)) + -->
+<!--   labs(x="Speed (m/s)", y = "Lactate (mmol/L)", title = "Step Test", color="Legend") -->
+
+
+<!-- p1 -->
+<!-- ``` -->
+
+<!-- <br><br> -->
+
+<!-- ```{r echo=FALSE, results='asis', warning=FALSE, message=FALSE} -->
+<!-- out <- stepdata[1,] %>%  -->
+<!--   select(38:ncol(stepdata)) %>%  -->
+<!--   # rename(z1.spd=z1.spd1, z6.spd=z6.spd1) %>%  -->
+<!--   mutate(z1.spd=paste0("< ",z1.spd1), -->
+<!--          z2.spd=paste0(z2.spd1,"-",z2.spd2), -->
+<!--          z3.spd=paste0(z3.spd1,"-",z3.spd2), -->
+<!--          z4.spd=paste0(z4.spd1,"-",z4.spd2), -->
+<!--          z5.spd=paste0(z5.spd1,"-",z5.spd2), -->
+<!--          z6.spd=paste0("> ",z6.spd1)) %>%  -->
+<!--   select(1,3,6,9,12,15,17:22) %>%  -->
+<!--   gather(key,value,z1.hr:z6.spd) %>%  -->
+<!--   extract(key,c("zone","variable"), "([[:alnum:]]+)\\.([[:alnum:]])") %>%  -->
+<!--   mutate(variable=ifelse(variable=="h","hr","spd")) %>%  -->
+<!--   spread(variable,value) -->
+
+<!-- kable(out, escape=FALSE, align="c", -->
+<!--       col.names=c("Zone","Heart Rate (bpm)", "Speed (mph)")) %>%  -->
+<!--   kable_styling(bootstrap_options = c('hover'), font_size = 12, full_width = FALSE) -->
+<!-- ``` -->
+
+### Nutrition
+
+<!-- ```{r echo=FALSE, results='asis', warning=FALSE, message=FALSE} -->
+<!-- # out <- nutri %>%  -->
+<!-- #   select(2,4:6) %>%  -->
+<!-- #   rename(Grocery=2, Travel=3, Cooking=4) %>%  -->
+<!-- #   mutate(Grocery=round(Grocery/35*100),  -->
+<!-- #          Travel=round(Travel/35*100), -->
+<!-- #          Cooking=round(Cooking/55*100)) -->
+<!-- #  -->
+<!-- # out <- out[1,] %>%  -->
+<!-- #   gather(key,value,Grocery:Cooking) -->
+<!-- #  -->
+<!-- # p1 <- ggplot(out,aes(x=key,y=value)) + -->
+<!-- #   geom_col() + -->
+<!-- #   theme_bw() + -->
+<!-- #   labs(x="", y="Percentage (%)", title = "Meal Prep/Travel") -->
+<!-- #  -->
+<!-- # p1 -->
+<!-- #  -->
+<!-- library(ggradar) -->
+<!-- library(scales) -->
+
+<!-- out <- nutri %>%  -->
+<!--   select(2,4:6) %>%  -->
+<!--   rename(Grocery=2, Travel=3, Cooking=4) %>%  -->
+<!--   mutate(Grocery=Grocery/35, Travel=Travel/35, Cooking=Cooking/55) -->
+
+<!-- p2 <- ggradar(out[1,], -->
+<!--               plot.title = "Reported Food Skills", -->
+<!--               base.size=12, -->
+<!--               axis.label.size = 4, -->
+<!--               grid.label.size = 5) -->
+
+<!-- p2 -->
+<!-- ``` -->
+
+<!-- <br> -->
+
+
+<!-- ```{r echo=FALSE, results='asis', warning=FALSE, message=FALSE} -->
+<!-- out <- nutri %>%  -->
+<!--   select(2,7) %>%  -->
+<!--   rename(Score=2) -->
+
+<!-- out <- out[1,] %>%  -->
+<!--   mutate(Pillar="Relationship with food", -->
+<!--          rec = ifelse(Score>=11, -->
+<!--                       "The results for this pillar indicate higher risks of impaired relationship with food. The sport dietitian Gen Masson will communicate with your shortly", -->
+<!--                       "The results for this pillar indicate a low risk of impared relationship with food. Nonetheless, if your relationship with food is a cause of concern for you, please do not hesistate to contact Gen Masson, sport dietitian."), -->
+<!--          Score=as.character(Score)) %>%  -->
+<!--   select(3,2,4) -->
+
+<!-- fe=35 -->
+<!-- out <- bind_rows(out,data.frame(Pillar="Clinical", -->
+<!--                                 Score=as.character(fe), -->
+<!--                                 rec=ifelse(fe>=50, -->
+<!--                                            "Your ferritin levels are above the minimum recommended levels of 50 ng/mL for endurance athletes.  If you are taking iron supplements, pursue this supplementation unless recommended otherwise by your family physician or sport dietitian.", -->
+<!--                                            "Your ferritin levels are below the minimum recommended levels of 50 ng/mL for endurance athletes. Suboptimal levels of ferritin can lead to impaired aerobic performance and adaptation to altitude. An iron supplement is recommended to increase your ferritin levels. Please consult your family physician or Gen Masson, sport dietitian, to discuss the best iron supplementation protocol for you."))) -->
+
+<!-- leaf <- read_xlsx("nutrition/LEAF-Q and Exercise-based results.xlsx",1) %>%  -->
+<!--   mutate(sex=ifelse(`LEAF-Q score`=="male","male","female"), -->
+<!--          `LEAF-Q score`=gsub("FLAG",9999,`LEAF-Q score`), -->
+<!--          `LEAF-Q score`=as.numeric(`LEAF-Q score`)) -->
+
+<!-- out <- bind_rows(out, data.frame(Pillar="Energy Availability", -->
+<!--                                  Score=as.character(leaf$`LEAF-Q score`[3]), -->
+<!--                                  rec=ifelse(leaf$`LEAF-Q score`[3]>100, -->
+<!--                                             "The sport dietitian Gen Masson would like to discuss your results further and will communicate with you shortly", -->
+<!--                                             ifelse(leaf$`LEAF-Q score`[3]>=8, -->
+<!--                                                    "The results suggest an increased risk for Relative Energy Deficiency in Sport. The sport dietitian Gen Masson will communicate with you shortly", -->
+<!--                                                    "The results suggest a low risk for Relative Energy Deficiency in Sport")))) -->
+
+
+<!-- tmp <- tolower(nutri[3,47]) -->
+<!-- out <- bind_rows(out,data.frame(Pillar="Vitamin D", -->
+<!--                                 Score=tmp, -->
+<!--                                 rec=ifelse(tmp=="yes", -->
+<!--                                            "Vitamin D increases the calcium absorption in the gut, contributes to bone health, improves muscle strength and balance as well as helps to maintain a healthy immune system : The action of sunlight (UVB rays) on the skin forms Vitamin D. This depends on: time of day, season, cloud cover, skin pigmentation, sunscreen use, level of body fat and clothing. In Canada, from October to April, the sun is not strong enough to produce vitamin D. You indicated using a vitamin D supplement from October to April. You are strongly encouraged to keep doing so.", -->
+<!--                                            "Vitamin D increases the calcium absorption in the gut, contributes to bone health, improves muscle strength and balance as well as helps to maintain a healthy immune system : The action of sunlight (UVB rays) on the skin forms Vitamin D. This depends on: time of day, season, cloud cover, skin pigmentation, sunscreen use, level of body fat and clothing. In Canada, from October to April, the sun is not strong enough to produce vitamin D. It is strongly recommended to use a 1000 IU vitamin D supplement daily from October to April."))) -->
+
+<!-- kable(out, escape=FALSE, align="l", -->
+<!--       col.names=c("Pillar","Result", "Recommendation")) %>%  -->
+<!--   kable_styling(bootstrap_options = c('hover'), font_size = 14, full_width = TRUE) -->
+<!-- ``` -->
+
+<!-- <br> -->
+
+<!-- Exercise-Based Results -->
+
+<!-- ```{r echo=FALSE, results='asis', warning=FALSE, message=FALSE} -->
+<!-- options(knitr.kable.NA = '') -->
+
+<!-- tmp <- strsplit(leaf$`EX-based Periodization`,", ")[[1]] -->
+<!-- out <- data.frame(Pillar="Periodization", -->
+<!--                                 Score=tmp[1], -->
+<!--                                 rec=tmp[2]) -->
+
+<!-- tmp <- strsplit(leaf$`EX-based Fueling training`,", ")[[1]] -->
+<!-- out <- bind_rows(out,data.frame(Pillar="Fueling Training", -->
+<!--                                 Score=tmp[1], -->
+<!--                                 rec=ifelse(length(tmp)==1,NA,tmp[2]))) -->
+
+<!-- tmp <- strsplit(leaf$`EX-based Race Nutrition`,", ")[[1]] -->
+<!-- out <- bind_rows(out,data.frame(Pillar="Race Nutrition", -->
+<!--                                 Score=tmp[1], -->
+<!--                                 rec=tmp[2])) -->
+
+<!-- tmp <- strsplit(leaf$`EX-based Hydration`,", ")[[1]] -->
+<!-- out <- bind_rows(out,data.frame(Pillar="Hydration", -->
+<!--                                 Score=tmp[1], -->
+<!--                                 rec=tmp[2])) -->
+
+<!-- kable(out, escape=FALSE, align="l", -->
+<!--       col.names=c("Areas","Result", "Recommendation")) %>%  -->
+<!--   kable_styling(bootstrap_options = c('hover'), font_size = 14, full_width = TRUE) -->
+<!-- ``` -->
+
+##
+

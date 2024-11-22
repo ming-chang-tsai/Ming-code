@@ -1,0 +1,783 @@
+---
+title: <center>Cross Country BC</center>
+subtitle: <center>Performance Test Report</center>
+author: "Prepared By: Ming-Chang Tsai"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output: html_document
+---
+
+
+<img src='csip.png' style='position:absolute;top:0px;right:0px;' height='120' width='200' >
+<img src='ccbc.jpg' style='position:absolute;top:0px;left:0px;' height='120' width='120' >
+
+<br>
+<br>
+
+
+```{r setup, include=FALSE}
+library(tidyverse) 
+library(knitr)
+library(kableExtra)
+library(gridExtra)
+library(leaflet)
+library(trackeR)
+library(signal)
+library(zoo)
+library(data.table)
+library(grid)
+library(lubridate)
+library(readxl)
+
+u <- "tallon"
+dp200 <- read_csv('emmanuelle_dp200_sample.csv') %>% mutate(impact=abs(impact))
+dp2k <- read_csv('emmanuelle_dp2k_sample.csv') %>% mutate(impact=abs(impact))
+a <- seconds_to_period(last(dp2k$end))
+pole3mt <- read_csv('pole3mt_tallon_sample.csv') %>% mutate(impact=abs(impact))
+boot3mt <- read_csv('skate3mt_tallon_sample.csv') %>% 
+  mutate(airtime=glide.start-boot.up,
+         ratio=airtime/glide.time)
+
+bf <- butter(3,0.1)
+g <- readTCX('ski.tcx') %>% mutate(time=row_number())
+gpsdata <- g %>% 
+  # mutate(time=row_number()) %>% 
+  dplyr::filter(time>=2383 & time<=2579) %>% 
+  mutate(time=row_number()-1,
+         distance=distance-distance[1],
+         speed=filtfilt(bf,speed,),
+         hr=frollmean(heart_rate,n=5))
+
+## step test data
+stepdata <- read_xlsx('20200727_XCski_ManhardCopy.xlsm',1,skip=5) %>% 
+  select(c(1:37,111,113,117,119:120,123,125:126,129,131:132,135,137:138,141,143))         # mph
+colnames(stepdata)[c(5,6,8:ncol(stepdata))] <- c('height','weight',
+                                                 paste0("spd",1:10), 
+                                                 paste0("hr",1:10), 
+                                                 paste0("lact",1:10),
+                                                 "z1.hr",'z1.spd1',
+                                                 "z2.hr",'z2.spd1','z2.spd2',
+                                                 "z3.hr",'z3.spd1','z3.spd2',
+                                                 "z4.hr",'z4.spd1','z4.spd2',
+                                                 "z5.hr",'z5.spd1','z5.spd2',
+                                                 "z6.hr",'z6.spd1')
+stepdata <- stepdata %>% 
+  mutate(height=as.numeric(height),
+         weight=as.numeric(weight))
+
+nutri <- read_xlsx('nutrition/Raw data screening 2020.xlsx',1)
+
+```
+
+##  {.tabset .tabset-pills .tabset-fade}
+
+<p style="font-weight:500; font-size:32px; color: #0051A5"> Name: Athlete </p>
+<br>
+<br>
+
+
+### Double Pull
+
+<p style="font-weight:500; font-size:16px"> Test Date: September 25, 2019</p>
+<p style="font-weight:500; font-size:16px"> Test Location: Callahan Road, Whistler, BC</p>
+<br><br>
+
+<p style="font-weight:500; font-size:24px"; color: #0051A5"> 200m (`r round(last(dp200$end),2)` sec) </p>
+
+There are 2 ways to assess pole asymmetry.
+
+- Time Difference: it is the difference in impact time between pole plants (left plant time - right plant time).  Negative number means LEFT pole plant was before RIGHT pole plant.
+- Impact: it is the difference between magnitude of impact over the average impact of both poles ((left impact - right impact) / average impact). Negative number means LEFT pole impact was higher than RIGHT pole impact.
+
+<br>
+
+```{r echo=FALSE, results='asis', warning=FALSE, message=FALSE, fig.height=10}
+out <- dp200 %>% dplyr::filter(side=="L")
+
+# bf <- butter(3,.1)
+
+out1 <- out %>%
+  mutate(impact2=filtfilt(bf,abs(impact)))
+out1 <- out1 %>%
+  mutate(cad=c(rollmean(cadence,5),rep(mean(cadence[(nrow(out1)-3):nrow(out1)]),4)),
+         gt=c(rollmean(groundtime,5), rep(mean(groundtime[(nrow(out1)-3):nrow(out1)]),4)))
+
+colors <- c("Cadence" = "black", "Impact" = "blue")
+
+p1 <- ggplot(out1, aes(x=time)) +
+  geom_line(aes(y=cad, col='Cadence')) +
+  geom_line(aes(y=impact2*10, col="Impact")) +
+  scale_y_continuous(sec.axis=sec_axis(~./10, name="Impact (g)")) +
+  theme_bw() +
+  # theme(legend.position='none') +
+  theme(legend.title=element_blank(),
+        legend.position=c(0,0),
+        legend.justification = c(0,0)) +
+  labs(x="Time (s)", y = "Cadence (rpm)", title = "Cadence & Impact", color="Legend")
+#   labs(x="Time (s)", y = "Cadence (rpm)", title = "Cadence & Impact")
+
+
+out2 <- dp200 %>% dplyr::filter(side=="R")
+# asym <- data.frame(end=out2$time,
+#                    time=(out$end-out2$end)/((out$end+out2$end)/2),
+#                    impact=(out$impact-out2$impact)/mean(c(out$impact,out2$impact)))
+
+setDT(out1)
+setDT(out2)
+
+out1[,mtime := epoch.end]
+out2[,mtime := epoch.end]
+setkey(out1,mtime)
+setkey(out2,mtime)
+
+outmatched <- out1[out2, roll="nearest"] %>% 
+  mutate(asym=(epoch.end-i.epoch.end)/1000)
+outmatched$asym2 <- (outmatched$impact-outmatched$i.impact)/rowMeans(outmatched[,c("impact","i.impact")])
+
+
+p2 <- ggplot(outmatched,aes(x=time,y=asym)) +
+  geom_line() +
+  ylim(-0.5,0.5) +
+  geom_hline(yintercept = 0, linetype="dashed") +
+  scale_x_reverse() +
+  coord_flip() +
+  labs(x="Test Duration (s)", y="Time Difference (s)") + 
+  # facet_grid(~test) +
+  theme(legend.position="none") +
+  ggtitle("Time Difference Asymmetry") +
+  theme_bw()
+
+p3 <- ggplot(outmatched,aes(x=time,y=asym2)) +
+  geom_line() +
+  ylim(-0.5,0.5) +
+  geom_hline(yintercept = 0, linetype="dashed") +
+  scale_x_reverse() +
+  coord_flip() +
+  labs(x="Test Duration (s)", y="Asymmetry") + 
+  # facet_grid(~test) +
+  theme(legend.position="none") +
+  ggtitle("Impact Asymmetry") +
+  theme_bw()
+
+
+grid.arrange(p1,p2,p3, ncol=1)
+```
+
+
+<br><br><br>
+
+<p style="font-weight:500; font-size:24px"; color: #0051A5"> 2000m (`r paste0(lubridate::minute(a),":",lubridate::second(a))`) </p>
+
+```{r echo=FALSE, results='asis', warning=FALSE, message=FALSE, fig2, fig.height=12}
+out <- dp2k %>% dplyr::filter(side=="L")
+
+# bf <- butter(3,.1)
+
+out1 <- out %>%
+  mutate(impact2=filtfilt(bf,abs(impact)))
+out1 <- out1 %>%
+  mutate(cad=c(rollmean(cadence,5),rep(mean(cadence[(nrow(out1)-3):nrow(out1)]),4)),
+         gt=c(rollmean(groundtime,5), rep(mean(groundtime[(nrow(out1)-3):nrow(out1)]),4)))
+
+colors <- c("Cadence" = "black", "Impact" = "blue")
+
+p1 <- ggplot(out1, aes(x=time)) +
+  geom_line(aes(y=cad, col='Cadence')) +
+  geom_line(aes(y=impact2*10, col="Impact")) +
+  scale_y_continuous(sec.axis=sec_axis(~./10, name="Impact (g)")) +
+  theme_bw() +
+  # theme(legend.position='none') +
+  theme(legend.title=element_blank(),
+        legend.position=c(0,0),
+        legend.justification = c(0,0)) +
+  labs(x="Time (s)", y = "Cadence (rpm)", title = "Cadence & Impact", color="Legend")
+
+
+out2 <- dp2k %>% dplyr::filter(side=="R")
+
+setDT(out1)
+setDT(out2)
+
+out1[,mtime := epoch.end]
+out2[,mtime := epoch.end]
+setkey(out1,mtime)
+setkey(out2,mtime)
+
+outmatched <- out1[out2, roll="nearest"] %>% 
+  mutate(asym=(epoch.end-i.epoch.end)/1000)
+outmatched$asym2 <- (outmatched$impact-outmatched$i.impact)/rowMeans(outmatched[,c("impact","i.impact")])
+
+
+p2 <- ggplot(outmatched,aes(x=time,y=asym)) +
+  geom_line() +
+  ylim(-0.5,0.5) +
+  geom_hline(yintercept = 0, linetype="dashed") +
+  scale_x_reverse() +
+  coord_flip() +
+  labs(x="Test Duration (s)", y="Time Difference (s)") + 
+  # facet_grid(~test) +
+  theme(legend.position="none") +
+  ggtitle("Time Difference Asymmetry") +
+  theme_bw()
+
+p3 <- ggplot(outmatched,aes(x=time,y=asym2)) +
+  geom_line() +
+  ylim(-0.5,0.5) +
+  geom_hline(yintercept = 0, linetype="dashed") +
+  scale_x_reverse() +
+  coord_flip() +
+  labs(x="Test Duration (s)", y="Asymmetry") + 
+  # facet_grid(~test) +
+  theme(legend.position="none") +
+  ggtitle("Impact Asymmetry") +
+  theme_bw()
+
+
+grid.arrange(p1,p2,p3, ncol=1)
+```
+
+
+
+
+
+### 3-Min All-Out Test
+
+<p style="font-weight:500; font-size:16px"> Test Date: September 28, 2019 </p>
+<p style="font-weight:500; font-size:16px"> Test Location: Callahan Road, Whistler, BC </p>
+
+<br><br>
+
+<p style="font-weight:500; font-size:24px"> GPS </p>
+
+```{r echo=FALSE, results='asis', warning=FALSE, message=FALSE}
+leaflet(gpsdata) %>% addTiles() %>% addPolylines(~longitude, ~latitude)
+
+
+colors <- c("Speed" = "black", "HR" = "blue")
+
+normalizer <- max(gpsdata$hr,na.rm=T)/max(gpsdata$speed)
+p1 <- ggplot(gpsdata, aes(x=time,y=(altitude-750)/10)) +
+  geom_area(fill="grey", alpha=0.4) +
+  scale_y_continuous(sec.axis=sec_axis(~.*normalizer, name="Heart Rate (bpm)")) +
+  theme_bw() +
+  geom_line(aes(y=speed, color="Speed")) +
+  geom_line(aes(y=hr/normalizer, color="HR")) + 
+  theme(legend.title=element_blank(),
+        legend.position=c(0,0),
+        legend.justification = c(0,0)) +
+  labs(x="Time (s)", y = "Speed (m/s)", title = "Speed & HR", color="Legend")
+
+p1
+
+```
+
+<br><br><br>
+
+<p style="font-weight:500; font-size:24px"> Skate Only (`r round(g$distance[2963+180]-g$distance[2963])` m) </p>
+
+```{r echo=FALSE, results='asis', warning=FALSE, message=FALSE}
+out <- boot3mt %>% dplyr::filter(name==u,side=="L", test=="skateOnly") %>% 
+  rename(time=boot.up) %>% 
+  mutate(cad=frollmean(cadence,5))
+
+# out$cad <- c(rollmean(out1$cadence,5),rep(mean(out$cadence[(nrow(out)-3):nrow(out)]),4))
+out <- full_join(out[c('time')], gpsdata[c('time','speed','altitude')], by="time") %>%
+  arrange(time) %>%
+  mutate(elevation=ifelse(time<1,750.8,na.approx(altitude)),
+         speed=ifelse(time<1,0,na.approx(speed)),
+         speed=frollmean(speed,5)) %>% 
+  right_join(.,out,by="time")
+
+colors <- c("Speed" = "black", "Cadence" = "blue")
+
+normalizer <- max(out$cad,na.rm=T)/max(out$speed,na.rm=T)
+p1 <- ggplot(out, aes(x=time,y=(altitude-700)/10)) +
+  geom_area(fill="grey", alpha=0.4) +
+  scale_y_continuous(sec.axis=sec_axis(~.*normalizer, name="Cadence (spm)")) +
+  theme_bw() +
+  geom_line(aes(y=speed, color="Speed")) +
+  geom_line(aes(y=cad/normalizer, color="Cadence")) + 
+  theme(legend.title=element_blank(),
+        legend.position=c(0,0),
+        legend.justification = c(0,0)) +
+  labs(x="Time (s)", y = "Speed (m/s)", title = "Speed & Cadence", color="Legend")
+
+# 
+# 
+# out2 <- boot3mt %>% dplyr::filter(name==u,side=="R", test=="skateOnly")
+# asym <- data.frame(time=out2$boot.up[-1],
+#                    glide=(out$glide.time[-c(1:4)]-out2$glide.time[-1])/((out$glide.time[-c(1:4)]+out2$glide.time[-1])/2),
+#                    tglide=(out$stride.time[-c(1:4)]-out2$stride.time[-1])/((out$stride.time[-c(1:4)]+out2$stride.time[-1])/2))
+# 
+# p2 <- ggplot(asym, aes(x=time)) +
+#   geom_line(aes(y=glide)) + 
+#   geom_point(aes(y=tglide, col='lightgrey')) +
+#   # scale_y_continuous(sec.axis=sec_axis(~.*100-1, name="Impact")) +
+#   theme_bw() +
+#   theme(legend.position='none') +
+#   labs(x="Time (s)", title = "Asymmetry")
+
+
+p1
+# grid.arrange(p1, p2, p3, p4, ncol=2)
+```
+
+Boot Air Time is defined as when the boot is off the ground and Boot Gournd Time is when the boot is on the ground. Boot Air to Ground ratio is air time over ground time, so 1 means you spent equal time in the air and ground during the stroke while value greater than 1 means you spent more time off the gound and value less than 1 means you spent more time on the ground.
+
+```{r echo=FALSE, results='asis', warning=FALSE, message=FALSE, fig.height=8}
+out <- boot3mt %>% dplyr::filter(name==u, test=="skateOnly") %>% 
+  rename(time=boot.up) %>% 
+  mutate(cad=frollmean(cadence,5))
+
+out1 <- out %>%
+  dplyr::filter(side=="L") %>% 
+  mutate(airtime2=frollmean(airtime,5),
+         groundtime=frollmean(glide.time,5))
+
+out1 <- full_join(out1[c('time')], gpsdata[c('time','altitude')], by="time") %>% 
+  arrange(time) %>% 
+  mutate(altitude=na.approx(altitude)) %>% 
+  right_join(.,out1, by="time")
+
+
+colors <- c("Air" = "black", "Ground" = "blue")
+
+
+p1 <- ggplot(out1, aes(x=time, y=(altitude-725)/100)) +
+  geom_area(fill="grey", alpha=0.4) +
+  scale_y_continuous(sec.axis=sec_axis(~.*100+725, name="Elevation (m)")) +
+  geom_line(aes(y=airtime2, color="Air")) +
+  geom_line(aes(y=groundtime, color="Ground")) + 
+  theme_bw() +
+  theme(legend.title=element_blank(),
+        legend.position=c(0,0),
+        legend.justification = c(0,0)) +
+  labs(x="Time (s)", y = "Boot Air Time (s)", title = "Boot Time (Air & Ground) ", color="Legend") +
+  scale_color_manual(values = colors)
+
+
+p2 <- ggplot(out1, aes(x=time, y=(altitude-750)/50)) +
+  geom_area(fill="grey", alpha=0.4) +
+  scale_y_continuous(sec.axis=sec_axis(~.*50+750, name="Elevation (m)")) +
+  geom_line(aes(y=ratio)) +
+  theme_bw() +
+  theme(legend.title=element_blank(),
+        legend.position = "none") +
+  labs(x="Time (s)", y = "", title = "Boot Air/Ground Ratio", color="Legend") +
+  scale_color_manual(values = colors) +
+  geom_hline(yintercept = 1, linetype="dashed")
+
+grid.arrange(p1,p2,ncol=1)
+```
+
+Asymmetry is defined as the difference between the LEFT vs the RIGHT boot time (air or ground) over average of the boot times.  In both figures, negative number means RIGHT boot time is higher than LEFT boot time (left boot time - right boot time).
+
+```{r echo=FALSE, results='asis', warning=FALSE, message=FALSE, fig.width=8}
+out <- boot3mt %>% dplyr::filter(name==u, test=="skateOnly") %>% 
+  rename(time=boot.up) %>% 
+  mutate(cad=frollmean(cadence,5))
+
+
+out1 <- out %>%
+  dplyr::filter(side=="L") %>% 
+  mutate(airtime2=frollmean(airtime,5),
+         groundtime=frollmean(glide.time,5))
+
+
+out2 <- out %>%
+  dplyr::filter(side=="R") %>% 
+  mutate(airtime2=frollmean(airtime,5),
+         groundtime=frollmean(glide.time,5))
+
+
+setDT(out1)
+setDT(out2)
+
+setkey(out1,time)
+setkey(out2,time)
+
+outmatched <- out1[out2, roll="nearest"]
+outmatched$asym <- (outmatched$airtime-outmatched$i.airtime)/rowMeans(outmatched[,c("airtime",'i.airtime')])
+outmatched$asym2 <- (outmatched$glide.time-outmatched$i.glide.time)/rowMeans(outmatched[,c("glide.time","i.glide.time")])
+
+
+p1 <- ggplot(outmatched,aes(x=time,y=asym,col=test)) +
+  geom_line() +
+  ylim(-0.5,0.5) +
+  geom_hline(yintercept = 0, linetype="dashed") +
+  scale_x_reverse() +
+  coord_flip() +
+  labs(x="Test Duration (s)", y="Asymmetry") + 
+  # facet_grid(~test) +
+  theme_bw() +
+  theme(legend.position="none") +
+  ggtitle("Boot Air Time")
+
+p2 <- ggplot(outmatched,aes(x=time,y=asym2,col=test)) +
+  geom_line() +
+  ylim(-0.5,0.5) +
+  geom_hline(yintercept = 0, linetype="dashed") +
+  scale_x_reverse() +
+  coord_flip() +
+  labs(x="Test Duration (s)", y="Asymmetry") + 
+  # facet_grid(~test) +
+  theme_bw() +
+  theme(legend.position="none") +
+  ggtitle("Boot Ground Time")
+
+grid.arrange(p1,p2,ncol=2)
+# grid.arrange(p1,p2,ncol=1, top=textGrob("Boot Air Time",gp=gpar(fontsize=20,font=3)))
+```
+
+<br><br><br>
+
+<p style="font-weight:500; font-size:24px"> Pole Only (`r round(g$distance[2386+180]-g$distance[2386])` m) </p>
+
+```{r echo=FALSE, results='asis', warning=FALSE, message=FALSE, fig.height=10}
+out <- pole3mt %>% dplyr::filter(side=="L")
+
+# bf <- butter(3,.1)
+
+out1 <- out %>%
+  dplyr::filter(test=="dpOnly") %>% 
+  mutate(impact2=filtfilt(bf,abs(impact)))
+out1 <- out1 %>%
+  mutate(cad=c(rollmean(cadence,5),rep(mean(cadence[(nrow(out1)-3):nrow(out1)]),4)),
+         gt=c(rollmean(groundtime,5), rep(mean(groundtime[(nrow(out1)-3):nrow(out1)]),4)))
+
+colors <- c("Cadence" = "black", "Impact" = "blue")
+
+p1 <- ggplot(out1, aes(x=time)) +
+  geom_line(aes(y=cad, col='Cadence')) +
+  geom_line(aes(y=impact2*10, col="Impact")) +
+  scale_y_continuous(sec.axis=sec_axis(~./10, name="Impact (g)")) +
+  theme_bw() +
+  theme(legend.title=element_blank(),
+        legend.position=c(1,1),
+        legend.justification = c(1,1)) +
+  labs(x="Time (s)", y = "Cadence (rpm)", title = "Cadence & Impact", color="Legend")
+#   labs(x="Time (s)", y = "Cadence (rpm)", title = "Cadence & Impact")
+
+
+out2 <- pole3mt %>%
+  dplyr::filter(side=="R",test=="dpOnly") %>% 
+  mutate(impact2=filtfilt(bf,abs(impact)))
+out2 <- out2 %>%
+  mutate(cad=c(rollmean(cadence,5),rep(mean(cadence[(nrow(out1)-3):nrow(out1)]),4)),
+         gt=c(rollmean(groundtime,5), rep(mean(groundtime[(nrow(out1)-3):nrow(out1)]),4)))
+
+
+setDT(out1)
+setDT(out2)
+
+out1[,mtime := epoch.end]
+out2[,mtime := epoch.end]
+setkey(out1,mtime)
+setkey(out2,mtime)
+
+outmatched <- out1[out2, roll="nearest"] %>% 
+  mutate(asym=(epoch.end-i.epoch.end)/1000)
+outmatched$asym2 <- (outmatched$impact-outmatched$i.impact)/rowMeans(outmatched[,c("impact","i.impact")])
+
+
+p2 <- ggplot(outmatched,aes(x=time,y=asym)) +
+  geom_line() +
+  ylim(-0.5,0.5) +
+  geom_hline(yintercept = 0, linetype="dashed") +
+  scale_x_reverse() +
+  coord_flip() +
+  labs(x="Test Duration (s)", y="Time Difference (s)") + 
+  # facet_grid(~test) +
+  theme(legend.position="none") +
+  ggtitle("Time Difference Asymmetry") +
+  theme_bw()
+
+p3 <- ggplot(outmatched,aes(x=time,y=asym2)) +
+  geom_line() +
+  ylim(-0.5,0.5) +
+  geom_hline(yintercept = 0, linetype="dashed") +
+  scale_x_reverse() +
+  coord_flip() +
+  labs(x="Test Duration (s)", y="Asymmetry") + 
+  # facet_grid(~test) +
+  theme(legend.position="none") +
+  ggtitle("Impact Asymmetry") +
+  theme_bw()
+
+
+grid.arrange(p1,p2,p3, ncol=1)
+```
+
+<br><br><br>
+
+<p style="font-weight:500; font-size:24px"> Normal Skate (`r round(g$distance[1581+180]-g$distance[1581])` m) </p>
+
+```{r echo=FALSE, results='asis', warning=FALSE, message=FALSE, fig.height=8}
+out1 <- pole3mt %>% dplyr::filter(side=="R",test=="dpNormal") %>% 
+  mutate(impact2=filtfilt(bf,abs(impact)),
+         cad=frollmean(cadence,5))
+
+out2 <- pole3mt %>% dplyr::filter(side=="R", test=="dpOnly") %>% 
+  mutate(impact2=filtfilt(bf,abs(impact)),
+         cad=frollmean(cadence,5))
+
+
+p1 <- ggplot(out1, aes(end,cad, colour="red")) + 
+  geom_line() +
+  # geom_line(data=out,aes(x=end,y=cadence,colour="red")) + 
+  geom_line(data=out2,aes(x=end,y=cad,colour="blue")) +
+  ylim(c(50,150)) +
+  labs(x="Time (s)", y="Cadence (spm)", title = "Cadence") +
+  scale_colour_discrete(name="Test", labels =c("DP", "Normal")) +
+  theme_bw() +
+  theme(legend.title=element_blank(),
+        legend.position=c(1,1),
+        legend.justification = c(1,1))
+
+
+p2 <- ggplot(out1, aes(end,impact2, colour="red")) + 
+  geom_line() +
+  geom_line(data=out2,aes(x=end,y=impact2,colour="blue")) +
+  labs(x="Time (s)", y="Impact (g)", title = "Impact") +
+  scale_colour_discrete(name="Test", labels =c("DP", "Normal")) +
+  theme_bw() +
+  theme(legend.position = "none")
+
+grid.arrange(p1,p2,ncol=1, top=textGrob("Pole", gp=gpar(fontsize=16, font=3)))
+```
+
+<br><br>
+
+```{r echo=FALSE, results='asis', warning=FALSE, message=FALSE, fig.height=12}
+out1 <- boot3mt %>% dplyr::filter(name==u, test=="skateNormal") %>% 
+  rename(time=boot.up) %>% 
+  mutate(cad=frollmean(cadence,5),
+         airtime2=frollmean(airtime,5),
+         groundtime=frollmean(glide.time,5))
+
+
+
+out2 <- boot3mt %>% dplyr::filter(name==u, side==unique(out1$side),test=="skateOnly") %>% 
+  rename(time=boot.up) %>% 
+  mutate(cad=frollmean(cadence,5),
+         airtime2=frollmean(airtime,5),
+         groundtime=frollmean(glide.time,5))
+
+
+p1 <- ggplot(out1, aes(time,cad, colour="red")) + 
+  geom_line() +
+  geom_line(data=out2,aes(x=time,y=cad,colour="blue")) +
+  labs(x="Time (s)", y="Cadence (spm)", title = "Cadence") +
+  scale_colour_discrete(name="Test", labels =c("DP", "Normal")) +
+  theme_bw() +
+  theme(legend.title=element_blank(),
+        legend.position=c(1,1),
+        legend.justification = c(1,1))
+
+
+p2 <- ggplot(out1, aes(x=time, y=airtime2, colour="red")) +
+  geom_line() +
+  geom_line(data=out2,aes(x=time,y=airtime2, colour="blue")) + 
+  labs(x="Time (s)", y="Time (s)", title = "Boot in Air Time (Skate Only & Normal)") +
+  theme_bw() +
+  theme(legend.position="none")
+
+p3 <- ggplot(out1, aes(x=time, y=groundtime, colour="red")) +
+  geom_line() +
+  geom_line(data=out2,aes(x=time,y=groundtime, colour="blue")) + 
+  labs(x="Time (s)", y="Time (s)", title = "Boot on Ground Time (Skate Only & Normal)") +
+  theme_bw() +
+  theme(legend.position="none")
+
+p4 <- ggplot(out1, aes(x=time, y=ratio, colour="red")) +
+  geom_line() +
+  geom_line(data=out2,aes(x=time,y=ratio, colour="blue")) + 
+  labs(x="Time (s)", y="", title = "Boot Air/Ground Ratio (Skate Only & Normal)") +
+  theme_bw() +
+  theme(legend.position="none") +
+  geom_hline(yintercept = 1, linetype="dashed")
+
+
+grid.arrange(p1,p2,p3,p4,ncol=1, top=textGrob("Skate", gp=gpar(fontsize=16, font=3)))
+```
+
+### Lactate Test
+
+<p style="font-weight:500; font-size:16px"> Test Date: September 27, 2019</p>
+<p style="font-weight:500; font-size:16px"> Test Location: Whistler Athletic Center, Whistler, BC</p>
+
+<br><br>
+
+```{r echo=FALSE, results='asis', warning=FALSE, message=FALSE}
+## physiology data
+out <- stepdata[1,] %>% 
+  select(8:37) %>% 
+  gather(key,value,spd1:lact10) %>% 
+  extract(key,c("variable","stage"), "([[:alnum:]]+)([[:alnum:]]+)") %>%
+  mutate(variable=gsub("1","",variable),
+         stage=as.numeric(gsub(0,10,stage))) %>% 
+  spread(variable,value) %>% 
+  filter_all(all_vars(!is.na(.)))
+
+
+
+colors <- c("HR" = "black", "Lactate" = "blue")
+
+normalizer <- max(out$hr,na.rm=T)/max(out$lact,na.rm=T)
+p1 <- ggplot(out, aes(x=spd)) +
+  # scale_x_continuous(breaks = seq(min(out$stage),max(out$stage))) +
+  theme_bw() +
+  geom_line(aes(y=lact, color="Lactate")) +
+  geom_line(aes(y=hr/normalizer, color="HR")) + 
+  scale_y_continuous(sec.axis=sec_axis(~.*normalizer, name="Heart Rate (bpm)")) +
+  theme(legend.title=element_blank(),
+        legend.position=c(1,0),
+        legend.justification = c(1,0)) +
+  labs(x="Speed (m/s)", y = "Lactate (mmol/L)", title = "Step Test", color="Legend")
+
+
+p1
+```
+
+<br><br>
+
+```{r echo=FALSE, results='asis', warning=FALSE, message=FALSE}
+out <- stepdata[1,] %>% 
+  select(38:ncol(stepdata)) %>% 
+  # rename(z1.spd=z1.spd1, z6.spd=z6.spd1) %>% 
+  mutate(z1.spd=paste0("< ",z1.spd1),
+         z2.spd=paste0(z2.spd1,"-",z2.spd2),
+         z3.spd=paste0(z3.spd1,"-",z3.spd2),
+         z4.spd=paste0(z4.spd1,"-",z4.spd2),
+         z5.spd=paste0(z5.spd1,"-",z5.spd2),
+         z6.spd=paste0("> ",z6.spd1)) %>% 
+  select(1,3,6,9,12,15,17:22) %>% 
+  gather(key,value,z1.hr:z6.spd) %>% 
+  extract(key,c("zone","variable"), "([[:alnum:]]+)\\.([[:alnum:]])") %>% 
+  mutate(variable=ifelse(variable=="h","hr","spd")) %>% 
+  spread(variable,value)
+
+kable(out, escape=FALSE, align="c",
+      col.names=c("Zone","Heart Rate (bpm)", "Speed (mph)")) %>% 
+  kable_styling(bootstrap_options = c('hover'), font_size = 12, full_width = FALSE)
+```
+
+### Nutrition
+
+```{r echo=FALSE, results='asis', warning=FALSE, message=FALSE}
+# out <- nutri %>% 
+#   select(2,4:6) %>% 
+#   rename(Grocery=2, Travel=3, Cooking=4) %>% 
+#   mutate(Grocery=round(Grocery/35*100), 
+#          Travel=round(Travel/35*100),
+#          Cooking=round(Cooking/55*100))
+# 
+# out <- out[1,] %>% 
+#   gather(key,value,Grocery:Cooking)
+# 
+# p1 <- ggplot(out,aes(x=key,y=value)) +
+#   geom_col() +
+#   theme_bw() +
+#   labs(x="", y="Percentage (%)", title = "Meal Prep/Travel")
+# 
+# p1
+# 
+library(ggradar)
+library(scales)
+
+out <- nutri %>% 
+  select(2,4:6) %>% 
+  rename(Grocery=2, Travel=3, Cooking=4) %>% 
+  mutate(Grocery=Grocery/35, Travel=Travel/35, Cooking=Cooking/55)
+
+p2 <- ggradar(out[1,],
+              plot.title = "Reported Food Skills",
+              base.size=12,
+              axis.label.size = 4,
+              grid.label.size = 5)
+
+p2
+```
+
+<br>
+
+
+```{r echo=FALSE, results='asis', warning=FALSE, message=FALSE}
+out <- nutri %>% 
+  select(2,7) %>% 
+  rename(Score=2)
+
+out <- out[1,] %>% 
+  mutate(Pillar="Relationship with food",
+         rec = ifelse(Score>=11,
+                      "The results for this pillar indicate higher risks of impaired relationship with food. The sport dietitian Gen Masson will communicate with your shortly",
+                      "The results for this pillar indicate a low risk of impared relationship with food. Nonetheless, if your relationship with food is a cause of concern for you, please do not hesistate to contact Gen Masson, sport dietitian."),
+         Score=as.character(Score)) %>% 
+  select(3,2,4)
+
+fe=35
+out <- bind_rows(out,data.frame(Pillar="Clinical",
+                                Score=as.character(fe),
+                                rec=ifelse(fe>=50,
+                                           "Your ferritin levels are above the minimum recommended levels of 50 ng/mL for endurance athletes.  If you are taking iron supplements, pursue this supplementation unless recommended otherwise by your family physician or sport dietitian.",
+                                           "Your ferritin levels are below the minimum recommended levels of 50 ng/mL for endurance athletes. Suboptimal levels of ferritin can lead to impaired aerobic performance and adaptation to altitude. An iron supplement is recommended to increase your ferritin levels. Please consult your family physician or Gen Masson, sport dietitian, to discuss the best iron supplementation protocol for you.")))
+
+leaf <- read_xlsx("nutrition/LEAF-Q and Exercise-based results.xlsx",1) %>% 
+  mutate(sex=ifelse(`LEAF-Q score`=="male","male","female"),
+         `LEAF-Q score`=gsub("FLAG",9999,`LEAF-Q score`),
+         `LEAF-Q score`=as.numeric(`LEAF-Q score`))
+
+out <- bind_rows(out, data.frame(Pillar="Energy Availability",
+                                 Score=as.character(leaf$`LEAF-Q score`[3]),
+                                 rec=ifelse(leaf$`LEAF-Q score`[3]>100,
+                                            "The sport dietitian Gen Masson would like to discuss your results further and will communicate with you shortly",
+                                            ifelse(leaf$`LEAF-Q score`[3]>=8,
+                                                   "The results suggest an increased risk for Relative Energy Deficiency in Sport. The sport dietitian Gen Masson will communicate with you shortly",
+                                                   "The results suggest a low risk for Relative Energy Deficiency in Sport"))))
+
+
+tmp <- tolower(nutri[3,47])
+out <- bind_rows(out,data.frame(Pillar="Vitamin D",
+                                Score=tmp,
+                                rec=ifelse(tmp=="yes",
+                                           "Vitamin D increases the calcium absorption in the gut, contributes to bone health, improves muscle strength and balance as well as helps to maintain a healthy immune system : The action of sunlight (UVB rays) on the skin forms Vitamin D. This depends on: time of day, season, cloud cover, skin pigmentation, sunscreen use, level of body fat and clothing. In Canada, from October to April, the sun is not strong enough to produce vitamin D. You indicated using a vitamin D supplement from October to April. You are strongly encouraged to keep doing so.",
+                                           "Vitamin D increases the calcium absorption in the gut, contributes to bone health, improves muscle strength and balance as well as helps to maintain a healthy immune system : The action of sunlight (UVB rays) on the skin forms Vitamin D. This depends on: time of day, season, cloud cover, skin pigmentation, sunscreen use, level of body fat and clothing. In Canada, from October to April, the sun is not strong enough to produce vitamin D. It is strongly recommended to use a 1000 IU vitamin D supplement daily from October to April.")))
+
+kable(out, escape=FALSE, align="l",
+      col.names=c("Pillar","Result", "Recommendation")) %>% 
+  kable_styling(bootstrap_options = c('hover'), font_size = 14, full_width = TRUE)
+```
+
+<br>
+
+Exercise-Based Results
+
+```{r echo=FALSE, results='asis', warning=FALSE, message=FALSE}
+options(knitr.kable.NA = '')
+
+tmp <- strsplit(leaf$`EX-based Periodization`,", ")[[1]]
+out <- data.frame(Pillar="Periodization",
+                                Score=tmp[1],
+                                rec=tmp[2])
+
+tmp <- strsplit(leaf$`EX-based Fueling training`,", ")[[1]]
+out <- bind_rows(out,data.frame(Pillar="Fueling Training",
+                                Score=tmp[1],
+                                rec=ifelse(length(tmp)==1,NA,tmp[2])))
+
+tmp <- strsplit(leaf$`EX-based Race Nutrition`,", ")[[1]]
+out <- bind_rows(out,data.frame(Pillar="Race Nutrition",
+                                Score=tmp[1],
+                                rec=tmp[2]))
+
+tmp <- strsplit(leaf$`EX-based Hydration`,", ")[[1]]
+out <- bind_rows(out,data.frame(Pillar="Hydration",
+                                Score=tmp[1],
+                                rec=tmp[2]))
+
+kable(out, escape=FALSE, align="l",
+      col.names=c("Areas","Result", "Recommendation")) %>% 
+  kable_styling(bootstrap_options = c('hover'), font_size = 14, full_width = TRUE)
+```
+
+##
+

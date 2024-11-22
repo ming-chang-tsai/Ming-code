@@ -1,0 +1,152 @@
+---
+title: <center><b> CCBC Camp Report </b></center>
+author: "Prepared by: Ming-Chang Tsai"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+
+<img src='/Users/mingchangtsai/CSI Pacific Dropbox/Ming-Chang Tsai/Tsai/CSIP/projects/PSO/Cross Country BC/dashboard/CCBC dashboard/XC ski dashboard/reference/CSI_LOGO_Eng-FR_PACIFIC.jpg' style='position:absolute;top:0px;right:0px;' height='120' width='240' >
+<img src='/Users/mingchangtsai/CSI Pacific Dropbox/Ming-Chang Tsai/Tsai/CSIP/projects/PSO/Cross Country BC/dashboard/CCBC dashboard/XC ski dashboard/reference/athleticscanada.jpg' style='position:absolute;top:0px;left:0px;' height='120' width='120' >
+
+
+<br>
+<br>
+
+
+
+```{r setup, include=FALSE, message=FALSE}
+library(pacman)
+p_load(tidyverse,knitr,tidyr,kableExtra,gridExtra,singal,pracma,dygraphs,conflicted,here)
+conflict_prefer("filter","dplyr", quiet = T)
+conflict_prefer("group_rows","kableExtra", quiet = T)
+conflict_prefer("poly","stats", quiet = T)
+theme_set(theme_bw())
+
+
+
+```
+
+<p style="font-weight:500; font-size:32px; color:red"> `r fname[8]` </p>
+
+<br>
+<br>
+
+<p style="font-weight:500; font-size:16px"> Training Session Date: `r fname[5]` </p>
+
+<br>
+
+
+- weight (including chair): `r paste(mass,"kg",sep=" ")` (estimated)
+- Estimated wheel diameter: `r round(wheel,3)` cm
+
+
+```{r echo=FALSE, results='asis', warning=FALSE, message=FALSE}
+ggplot(out2,aes(x=dist,y=spd3*3.6, color=sprint)) +
+  geom_line() + 
+  theme_classic() +
+  theme(legend.title=element_blank(),
+        legend.position=c(1,0),
+        legend.justification = c(1,0)) +
+  labs(x="Distance (m)", y = "Speed (km/h)", title = "Start Speed Profile")
+
+```
+
+<br>
+
+
+
+```{r echo=FALSE, results='asis', warning=FALSE, message=FALSE, fig.height=8}
+out1 <- out %>% 
+  group_by(sprint) %>% 
+  # filter(sprint==i) %>% 
+  mutate(ptime2=loess(ptime~time, span = 0.5)$fitted,
+         rtime2=loess(rtime~time, span = 0.5)$fitted) %>% 
+  select(time,ptime2,rtime2,sprint) %>% 
+  gather(phase,split,ptime2:rtime2)
+
+g1 <- ggplot(out1, aes(x=time, y=split, color=sprint, lty=phase)) +
+  geom_line() +
+  labs(x="Time (s)", y = " ", title = "Time Spent on Push & Recovery Phase") +
+  scale_linetype_discrete(name="Phase", labels = c("Push/Drive","Recovery")) +
+  theme(legend.position = "bottom")
+
+
+out1 <- out %>% 
+  group_by(sprint) %>% 
+  mutate(pdist2=loess(pdist~time, span = 0.5)$fitted,
+         rdist2=loess(rdist~time, span = 0.5)$fitted) %>% 
+  select(time,pdist2,rdist2) %>% 
+  gather(phase,split,pdist2:rdist2)
+
+g2 <- ggplot(out1, aes(x=time, y=split, color=sprint,lty=phase)) +
+  geom_line() +
+  labs(x="Time (s)", y = " ", title = "Distance Travelled on Push & Recovery Phase") +
+  theme(legend.position = "none")
+
+grid.arrange(g1,g2,ncol=1)
+```
+
+
+<br><br>
+
+```{r echo=FALSE, results='asis', warning=FALSE, message=FALSE}
+# options(knitr.kable.NA = '')
+out1 <- out %>%
+  select(-peak2,-peak1) %>%
+  # filter(push<=5) %>%
+  mutate(ttime=ptime+rtime,
+         ddist=pdist+rdist,
+         `Push Speed (Km/h)`=ddist/ttime*3.6,
+         `Speed (Km/h)`=dist/time*3.6,
+         .before=cad) %>%
+  select(-ttime,-ddist) %>%
+  gather(var,value,time:cad) %>%
+  mutate(value=round(value,2)) %>%
+  spread(sprint,value) %>%
+  rename(Push=push) %>%
+  mutate(var=gsub("ptime","Push Time (s)",var),
+         var=gsub("rtime","Recovery Time (s)",var),
+         var=gsub("time","Total Time (s)",var),
+         var=gsub("pdist","Push Distance (m)",var),
+         var=gsub("rdist","Recovery Distance (m)",var),
+         var=gsub("dist","Total Distance (m)",var),
+         var=gsub("cad","Push Cadence (RPM)",var)) %>%
+  arrange(var)
+
+vname <- out1 %>% distinct(var) %>% pull(var)
+table1_data <- out1 %>%
+  filter(var %in% vname[7:9])
+table1 <- kable(table1_data[-2], escape=FALSE, align="l",
+                caption = "Cumulative Push Summary") %>%
+  kable_styling(bootstrap_options = c('hover'), font_size = 14, full_width = FALSE)
+
+for(i in 7:9){
+  table1 <- table1 %>%
+    pack_rows(vname[i], which(table1_data$var==vname[i])[1], last(which(table1_data$var==vname[i])), label_row_css = "background-color: red; color: #fff;")
+}
+
+table1
+```
+
+
+<br>
+
+```{r echo=FALSE, results='asis', warning=FALSE, message=FALSE}
+# options(knitr.kable.NA = '')
+table2_data <- out1 %>%
+  filter(var %in% vname[-c(7:9)])
+table2 <- kable(table2_data[-2], escape=FALSE, align="l",
+                caption = "Push by Push Summary") %>%
+  kable_styling(bootstrap_options = c('hover'), font_size = 14, full_width = FALSE)
+
+for(i in seq_along(vname[-c(7:9)])){
+  table2 <- table2 %>%
+    pack_rows(vname[i], which(table2_data$var==vname[i])[1], last(which(table2_data$var==vname[i])), label_row_css = "background-color: red; color: #fff;")
+}
+
+table2
+```
+
